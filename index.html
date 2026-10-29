@@ -1,0 +1,2188 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>すれちがい美術展 | Surechigai Art Exhibition</title>
+<meta name="description" content="図形カードで絵を描き、紛れ込んだ贋作師を見破るオンラインパーティーゲーム。2〜8人・インストール不要。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='8' width='56' height='48' rx='3' fill='%2387683a'/%3E%3Crect x='11' y='15' width='42' height='34' fill='%23f2e9d6'/%3E%3Ccircle cx='26' cy='30' r='7' fill='%23e53935'/%3E%3Cpolygon points='38,22 47,40 29,40' fill='%231e88e5'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+/* ============================================================
+   すれちがい美術展 — Design tokens
+   「夜の美術館」: 温かみのある墨色 × 金箔 × 生成りのカンヴァス
+   ============================================================ */
+:root {
+  --ink:        #171411;   /* 展示室の壁(夜) */
+  --ink-soft:   #211d18;   /* パネル面 */
+  --ink-raise:  #2a251f;   /* 浮き上がる面 */
+  --line:       #3a332a;   /* 罫線 */
+  --gold:       #d2a95e;   /* 金箔 */
+  --gold-soft:  #9c7f49;
+  --gold-glow:  rgba(210,169,94,.16);
+  --paper:      #f2e9d6;   /* カンヴァス */
+  --paper-dim:  #d9cfba;
+  --text:       #ece4d4;
+  --text-dim:   #a3977f;
+  --rope:       #c14953;   /* 美術館の赤いロープ */
+  --moss:       #7e9a6d;   /* 成功 */
+  --frame-dark: #4a3b25;
+  --frame-mid:  #87683a;
+  --radius:     10px;
+  --font-disp: 'Shippori Mincho B1', serif;
+  --font-body: 'Zen Kaku Gothic New', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  font-family: var(--font-body);
+  background:
+    radial-gradient(1200px 500px at 50% -10%, rgba(210,169,94,.06), transparent 60%),
+    var(--ink);
+  color: var(--text);
+  min-height: 100vh;
+  min-height: 100dvh;
+  line-height: 1.6;
+}
+button { font-family: inherit; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+::selection { background: var(--gold); color: var(--ink); }
+
+.container { max-width: 780px; margin: 0 auto; padding: 20px 16px 48px; }
+
+/* ---------- ヘッダー(美術館の銘板) ---------- */
+header { text-align: center; padding: 14px 0 18px; }
+.plaque {
+  display: inline-block;
+  padding: 10px 34px 14px;
+  border-top: 1px solid var(--gold-soft);
+  border-bottom: 1px solid var(--gold-soft);
+  position: relative;
+}
+.plaque::before, .plaque::after {
+  content: '◆'; position: absolute; top: 50%; transform: translateY(-50%);
+  color: var(--gold-soft); font-size: .55em;
+}
+.plaque::before { left: 6px; } .plaque::after { right: 6px; }
+h1 {
+  font-family: var(--font-disp); font-weight: 800;
+  font-size: clamp(1.5rem, 5.5vw, 2.1rem);
+  letter-spacing: .14em; color: var(--gold);
+  text-shadow: 0 0 24px rgba(210,169,94,.25);
+}
+.plaque .en {
+  display: block; font-family: var(--font-body); font-weight: 500;
+  font-size: .58rem; letter-spacing: .42em; color: var(--text-dim); margin-top: 4px;
+}
+
+/* ---------- ステータスバー ---------- */
+#status-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px; margin-bottom: 18px;
+  background: var(--ink-soft); border: 1px solid var(--line);
+  border-radius: 999px; font-size: .82rem; color: var(--text-dim);
+}
+#conn-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  background: #5a5248; transition: background .3s, box-shadow .3s;
+}
+#conn-dot.on { background: var(--moss); box-shadow: 0 0 8px var(--moss); }
+#status-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#room-chip {
+  display: none; font-weight: 700; letter-spacing: .2em;
+  color: var(--gold); background: var(--gold-glow);
+  border: 1px solid var(--gold-soft); border-radius: 999px;
+  padding: 1px 12px 1px 14px; font-size: .78rem; cursor: pointer;
+}
+#room-chip:hover { background: rgba(210,169,94,.28); }
+#status-bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 400; }
+#timer-chip {
+  flex-shrink: 0; font-weight: 700; font-size: .82rem; font-variant-numeric: tabular-nums;
+  color: var(--text); background: var(--ink-raise);
+  border: 1px solid var(--line); border-radius: 999px; padding: 1px 12px;
+}
+#timer-chip.hurry { color: #fff; background: var(--rope); border-color: var(--rope); animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { transform: scale(1.08); box-shadow: 0 0 14px rgba(193,73,83,.7); } }
+
+/* ---------- パネル ---------- */
+.panel { display: none; }
+.panel.active { display: block; animation: rise .35s ease both; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .panel.active { animation: none; }
+  * { transition: none !important; }
+}
+
+.section {
+  background: var(--ink-soft); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+}
+.section h3 {
+  font-family: var(--font-disp); color: var(--gold);
+  font-size: 1rem; letter-spacing: .12em; margin-bottom: 4px;
+}
+.section .desc { font-size: .8rem; color: var(--text-dim); margin-bottom: 14px; }
+
+label.field-label { display: block; font-size: .75rem; color: var(--text-dim); letter-spacing: .1em; margin-bottom: 6px; }
+input[type="text"] {
+  width: 100%; padding: 12px 14px; font-size: 16px;
+  background: var(--ink); border: 1px solid var(--line); border-radius: 8px;
+  color: var(--text); font-family: inherit; transition: border-color .15s;
+}
+input[type="text"]::placeholder { color: #6b6354; }
+input[type="text"]:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-glow); }
+input.code { text-transform: uppercase; letter-spacing: .35em; font-weight: 700; text-align: center; }
+
+/* ---------- ボタン ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px 20px; font-size: .92rem; font-weight: 700; letter-spacing: .06em;
+  border: none; border-radius: 8px; cursor: pointer;
+  transition: transform .12s ease, filter .15s, box-shadow .15s;
+}
+@media (hover: hover) {
+  .btn:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
+}
+.btn:active:not(:disabled) { transform: translateY(0) scale(.97); filter: brightness(.95); }
+.btn.armed { box-shadow: 0 0 0 2px var(--rope); color: #f2a3a9; }
+.btn:disabled { opacity: .35; cursor: not-allowed; }
+.btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.btn-gold  { background: linear-gradient(160deg, #e7c177, var(--gold) 55%, #b88d44); color: #221a0d; box-shadow: 0 2px 14px rgba(210,169,94,.25); }
+.btn-rope  { background: linear-gradient(160deg, #d05a64, var(--rope)); color: #fff; }
+.btn-moss  { background: linear-gradient(160deg, #8fae7c, var(--moss)); color: #15200f; }
+.btn-ghost { background: var(--ink-raise); color: var(--text); border: 1px solid var(--line); }
+.btn-full  { width: 100%; margin-top: 8px; }
+.btn-sm    { padding: 7px 14px; font-size: .8rem; }
+
+.divider { display: flex; align-items: center; gap: 12px; color: var(--text-dim); font-size: .75rem; letter-spacing: .25em; margin: 4px 0 16px; }
+.divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+
+/* ---------- 待機室 ---------- */
+#room-code-display {
+  font-family: var(--font-disp); font-size: 2.4rem; font-weight: 800;
+  color: var(--gold); text-align: center; letter-spacing: .4em; text-indent: .4em;
+  padding: 14px; margin: 10px 0 4px;
+  background: var(--gold-glow); border: 1px dashed var(--gold-soft); border-radius: var(--radius);
+}
+.room-actions { display: flex; gap: 8px; margin-bottom: 16px; }
+.room-actions .btn { flex: 1; }
+
+.player-list { display: flex; flex-direction: column; gap: 6px; }
+.player-row {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--ink); border: 1px solid var(--line);
+  border-radius: 8px; padding: 9px 14px; font-size: .9rem;
+  animation: rise .3s ease both;
+}
+.player-row .avatar {
+  width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-disp); font-weight: 700; font-size: .85rem;
+  background: var(--ink-raise); border: 1px solid var(--gold-soft); color: var(--gold);
+}
+.player-row .tag {
+  margin-left: auto; font-size: .68rem; letter-spacing: .1em;
+  color: var(--text-dim); border: 1px solid var(--line); border-radius: 999px; padding: 1px 10px;
+}
+.player-row .tag.host { color: var(--gold); border-color: var(--gold-soft); }
+.player-row.gone { opacity: .4; }
+
+/* ---------- 制作フェーズ ---------- */
+#theme-banner {
+  text-align: center; padding: 14px 16px; margin-bottom: 14px;
+  background: var(--ink-soft); border: 1px solid var(--gold-soft); border-radius: var(--radius);
+}
+#theme-banner .lbl { font-size: .68rem; letter-spacing: .3em; color: var(--text-dim); }
+#theme-banner .theme {
+  font-family: var(--font-disp); font-size: 1.5rem; font-weight: 800;
+  color: var(--gold); letter-spacing: .1em; margin-top: 2px;
+}
+
+/* 額縁付きカンヴァス */
+.frame {
+  padding: 10px;
+  background:
+    linear-gradient(135deg, var(--frame-mid), var(--frame-dark) 30%, var(--frame-mid) 50%, var(--frame-dark) 75%, var(--frame-mid));
+  border-radius: 4px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,225,160,.25);
+  margin-bottom: 14px;
+}
+/* カンヴァスは論理サイズ 480×360 固定で描き、表示幅に合わせて拡縮する(端末間で作品の見え方を揃える) */
+.canvas-frame { max-width: 560px; margin-left: auto; margin-right: auto; }
+#canvas-stage { position: relative; width: 100%; aspect-ratio: 4 / 3; }
+#canvas-area {
+  position: absolute; top: 0; left: 0;
+  width: 480px; height: 360px; overflow: hidden; transform-origin: top left;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(255,255,255,.5), transparent 60%),
+    var(--paper);
+  box-shadow: inset 0 0 36px rgba(80,60,20,.18), inset 0 0 0 1px rgba(0,0,0,.2);
+  touch-action: none;
+}
+#canvas-area.drop-ok { box-shadow: inset 0 0 0 3px var(--gold), inset 0 0 36px rgba(80,60,20,.18); }
+
+.action-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 16px; }
+
+.hand-label { font-size: .74rem; color: var(--text-dim); letter-spacing: .08em; margin-bottom: 8px; text-align: center; }
+#hand-area {
+  display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;
+  padding: 18px 12px 14px; min-height: 128px;
+  background: var(--ink-soft); border: 1px solid var(--line); border-radius: var(--radius);
+}
+#hand-area:empty::after {
+  content: '手札はすべてカンヴァスの上にあります';
+  align-self: center; color: var(--text-dim); font-size: .8rem;
+}
+#game-dock .action-row { margin: 14px 0 0; }
+
+.card-pair { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.card-slot { position: relative; }
+.card {
+  border-radius: 8px; background: var(--paper);
+  display: flex; justify-content: center; align-items: center;
+  box-shadow: 0 3px 8px rgba(0,0,0,.5);
+  touch-action: none; user-select: none; -webkit-user-select: none;
+  position: relative;
+}
+.card svg { pointer-events: none; }
+.card.front-card {
+  width: 68px; height: 68px; cursor: grab;
+  border: 2px solid var(--gold);
+  transition: transform .12s ease, box-shadow .12s;
+}
+@media (hover: hover) {
+  .card.front-card:hover { transform: translateY(-3px); box-shadow: 0 6px 14px rgba(0,0,0,.6), 0 0 12px var(--gold-glow); }
+}
+.card.front-card:active { transform: scale(.95); }
+.card.front-card.dragging { opacity: .3; }
+.card.front-card.flip-anim { animation: flip-y .28s ease; }
+@keyframes flip-y { 0% { transform: scaleX(1); } 50% { transform: scaleX(0); } 100% { transform: scaleX(1); } }
+/* 裏面のミニ表示(右上のバッジ)。タップでも裏返せる */
+.card.back-card {
+  position: absolute; top: -9px; right: -11px;
+  width: 30px; height: 30px; border-radius: 6px; cursor: pointer;
+  background: var(--paper-dim); border: 1px dashed #7a6e58;
+  box-shadow: 0 2px 6px rgba(0,0,0,.55);
+}
+.card.back-card::before {
+  content: '裏'; position: absolute; left: -6px; bottom: -6px;
+  width: 15px; height: 15px; border-radius: 50%;
+  background: var(--ink-raise); color: var(--text-dim); border: 1px solid var(--line);
+  font-size: .5rem; line-height: 13px; text-align: center;
+}
+.card.front-card svg { width: 80%; height: 80%; }
+.card.back-card  svg { width: 74%; height: 74%; opacity: .75; }
+
+.flip-btn {
+  min-height: 34px; width: 100%; min-width: 72px;
+  font-size: .74rem; padding: 5px 10px; border-radius: 999px; cursor: pointer;
+  background: var(--ink-raise); color: var(--text-dim); border: 1px solid var(--line);
+  transition: color .15s, border-color .15s;
+}
+@media (hover: hover) { .flip-btn:hover { color: var(--gold); border-color: var(--gold-soft); } }
+.flip-btn:active { color: var(--gold); border-color: var(--gold-soft); }
+
+/* ドラッグ中のゴースト(サイズはカンヴァスの表示倍率に合わせてJSで設定) */
+.drag-ghost {
+  position: fixed; width: 64px; height: 64px; z-index: 9999;
+  pointer-events: none; opacity: .9; border-radius: 8px;
+  background: var(--paper); border: 2px solid var(--gold);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 10px 24px rgba(0,0,0,.55);
+}
+.drag-ghost svg { width: 80%; height: 80%; }
+
+/* カンヴァス上のカード */
+.canvas-card {
+  position: absolute; width: 64px; height: 64px;
+  display: flex; justify-content: center; align-items: center;
+  cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none;
+  filter: drop-shadow(2px 3px 4px rgba(60,40,10,.3));
+  transition: transform .18s ease;
+}
+.canvas-card svg { width: 100%; height: 100%; pointer-events: none; }
+.canvas-card.selected { outline: 2px dashed var(--rope); outline-offset: 3px; border-radius: 6px; }
+.canvas-card.pop svg { animation: pop .3s cubic-bezier(.3,1.6,.5,1); }
+@keyframes pop { from { transform: scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* 選択カードの操作パレット(拡縮されないステージ側に置き、指で押せる大きさを保つ) */
+.card-controls {
+  position: absolute; display: flex; gap: 2px; z-index: 300;
+  background: rgba(23,20,17,.96); border: 1px solid var(--gold-soft);
+  border-radius: 999px; padding: 3px 5px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.5);
+  animation: rise .15s ease both;
+}
+.card-controls button {
+  min-width: 42px; min-height: 40px; font-size: 1.1rem; line-height: 1; cursor: pointer;
+  background: transparent; color: var(--text); border: none; border-radius: 999px;
+}
+.card-controls button:active { background: rgba(255,255,255,.16); }
+@media (hover: hover) { .card-controls button:hover { background: rgba(255,255,255,.12); } }
+
+.waiting-msg {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px;
+  color: rgba(70,55,25,.55); font-family: var(--font-disp); font-size: 1rem;
+}
+.waiting-msg .big { font-size: 2rem; }
+
+/* ---------- ギャラリー ---------- */
+.phase-head { margin-bottom: 14px; }
+.phase-head h2 { font-family: var(--font-disp); color: var(--gold); font-size: 1.3rem; letter-spacing: .12em; }
+.phase-head p { font-size: .82rem; color: var(--text-dim); }
+
+.gallery-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.gallery-item { animation: rise .4s ease both; }
+.gallery-item.no-anim { animation: none; }
+.gallery-item .frame { margin-bottom: 0; padding: 7px; transition: box-shadow .2s; }
+.gallery-item.can-pick .frame { cursor: pointer; }
+.gallery-item.pending .frame { box-shadow: 0 0 0 3px var(--gold), 0 0 24px var(--gold-glow), 0 10px 30px rgba(0,0,0,.55); }
+.gallery-canvas { width: 100%; aspect-ratio: 4 / 3; position: relative; overflow: hidden; background: var(--paper); box-shadow: inset 0 0 22px rgba(80,60,20,.16); }
+.museum-plaque {
+  margin: -4px 10px 0; position: relative; z-index: 2;
+  background: linear-gradient(160deg, #efe7d7, #cdc2ab);
+  color: #2c2417; border-radius: 3px; padding: 8px 12px;
+  box-shadow: 0 4px 10px rgba(0,0,0,.45);
+  font-size: .8rem;
+}
+.museum-plaque .artist { font-family: var(--font-disp); font-weight: 700; font-size: .92rem; }
+.museum-plaque .you { color: #8a6c2e; font-size: .72rem; margin-left: 4px; }
+.museum-plaque .work-no { float: right; color: #7a6e58; font-size: .7rem; letter-spacing: .15em; }
+.gallery-item .btn-vote { width: calc(100% - 20px); margin: 10px 10px 0; }
+.gallery-item.voted-target .frame { box-shadow: 0 0 0 3px var(--rope), 0 10px 30px rgba(0,0,0,.55); }
+
+#vote-progress { text-align: center; font-size: .8rem; color: var(--text-dim); margin-top: 18px; letter-spacing: .1em; }
+#panel-gallery { padding-bottom: 96px; }
+
+/* 画面下に固定するドック(投票の確定バー / スマホ時の手札トレイ) */
+.dock-fixed {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 500;
+  padding: 12px max(16px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: rgba(23,20,17,.94);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  border-top: 1px solid var(--gold-soft);
+  box-shadow: 0 -10px 30px rgba(0,0,0,.5);
+}
+#vote-dock { display: flex; align-items: center; gap: 12px; justify-content: center; flex-wrap: wrap; animation: dock-in .25s ease both; }
+#vote-dock .vote-dock-text { font-size: .9rem; }
+#vote-dock .vote-dock-text b { font-family: var(--font-disp); color: var(--gold); font-size: 1.05rem; }
+#vote-dock .vote-dock-actions { display: flex; gap: 8px; }
+@keyframes dock-in { from { transform: translateY(100%); } to { transform: none; } }
+
+/* ---------- 結果 ---------- */
+.reveal-banner {
+  text-align: center; padding: 22px 16px; border-radius: var(--radius);
+  margin-bottom: 16px; border: 1px solid;
+  animation: rise .5s ease both;
+}
+.reveal-banner.win-master { background: rgba(210,169,94,.1); border-color: var(--gold-soft); }
+.reveal-banner.win-faker  { background: rgba(193,73,83,.12); border-color: var(--rope); }
+.reveal-banner .verdict { font-family: var(--font-disp); font-size: 1.35rem; font-weight: 800; letter-spacing: .1em; }
+.reveal-banner.win-master .verdict { color: var(--gold); }
+.reveal-banner.win-faker  .verdict { color: #e0727b; }
+.reveal-banner .sub { font-size: .85rem; color: var(--text-dim); margin-top: 6px; }
+.reveal-banner .themes { margin-top: 10px; font-size: .88rem; }
+.reveal-banner .themes b { color: var(--text); }
+
+.vote-table { display: flex; flex-direction: column; gap: 8px; }
+.vote-row { display: grid; grid-template-columns: 1fr 2fr auto; gap: 10px; align-items: center; font-size: .86rem; }
+.vote-row .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vote-row .name .role { font-size: .9em; }
+.vote-bar-wrap { background: var(--ink); border-radius: 999px; height: 12px; overflow: hidden; border: 1px solid var(--line); }
+.vote-bar { height: 100%; background: linear-gradient(90deg, var(--gold-soft), var(--gold)); border-radius: 999px; width: 0; transition: width .8s cubic-bezier(.2,.7,.2,1); }
+.vote-row .count { font-size: .78rem; color: var(--text-dim); min-width: 3em; text-align: right; }
+
+.score-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px dashed var(--line); font-size: .9rem; }
+.score-row:last-child { border-bottom: none; }
+.score-row .rank { font-family: var(--font-disp); color: var(--gold); width: 2em; }
+.score-row .pts { margin-left: auto; font-weight: 700; color: var(--gold); }
+.score-row .delta { font-size: .75rem; color: var(--moss); width: 3.2em; text-align: right; }
+
+/* 結果発表の演出 */
+.seq { transition: opacity .5s ease, transform .5s ease; }
+.seq.seq-hidden { opacity: 0; transform: translateY(14px); pointer-events: none; }
+.reveal-banner.drumroll { background: var(--ink-soft); border-color: var(--line); }
+.reveal-banner.drumroll .verdict { color: var(--text-dim); }
+.dots i { font-style: normal; display: inline-block; animation: blink 1s infinite; }
+.dots i:nth-child(2) { animation-delay: .2s; } .dots i:nth-child(3) { animation-delay: .4s; }
+@keyframes blink { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
+.reveal-banner.slam { animation: slam .5s cubic-bezier(.2,1.5,.4,1) both; }
+@keyframes slam { from { opacity: 0; transform: scale(1.18); } to { opacity: 1; transform: none; } }
+.reveal-banner .guess-line { margin-top: 8px; font-size: .86rem; }
+.reveal-banner .guess-line .ok { color: var(--gold); font-weight: 700; }
+.reveal-banner .guess-line .ng { color: var(--text-dim); }
+
+#reveal-art { position: relative; max-width: 420px; margin: 0 auto 22px; }
+#reveal-art::before {   /* スポットライト */
+  content: ''; position: absolute; inset: -50px -30px -20px; pointer-events: none;
+  background: radial-gradient(ellipse at 50% 35%, rgba(255,226,160,.16), transparent 68%);
+}
+#reveal-art .frame { position: relative; margin-bottom: 0; }
+.stamp {
+  position: absolute; right: 7%; top: 9%; z-index: 3;
+  font-family: var(--font-disp); font-weight: 800; letter-spacing: .12em;
+  font-size: clamp(1.6rem, 8vw, 2.4rem); line-height: 1.2;
+  color: var(--rope); border: 4px double var(--rope); border-radius: 8px;
+  padding: 2px 12px 2px 16px; background: rgba(242,233,214,.4);
+  transform: rotate(-14deg); opacity: .92;
+}
+#reveal-art:not(.seq-hidden):not(.no-anim) .stamp { animation: stamp .45s cubic-bezier(.2,1.6,.4,1) .4s both; }
+@keyframes stamp { from { opacity: 0; transform: rotate(-14deg) scale(2.6); } to { opacity: .92; transform: rotate(-14deg) scale(1); } }
+
+/* 遊び方ボタン・モーダル */
+.icon-btn {
+  flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
+  background: var(--ink-raise); color: var(--gold); border: 1px solid var(--gold-soft);
+  font-weight: 700; font-size: .85rem; line-height: 1;
+}
+.modal {
+  position: fixed; inset: 0; z-index: 20000;
+  display: flex; align-items: center; justify-content: center;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  background: rgba(10,8,6,.72); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+  animation: toast-in .2s ease both;
+}
+.modal-card {
+  position: relative; width: min(100%, 520px); max-height: 100%; overflow-y: auto;
+  background: var(--ink-soft); border: 1px solid var(--gold-soft); border-radius: var(--radius);
+  padding: 22px 20px 18px; box-shadow: 0 20px 60px rgba(0,0,0,.6);
+}
+.modal-card h2 { font-family: var(--font-disp); color: var(--gold); letter-spacing: .12em; margin-bottom: 12px; }
+.modal-close { position: absolute; top: 14px; right: 14px; width: 34px; height: 34px; }
+.rules { padding-left: 1.3em; display: flex; flex-direction: column; gap: 10px; font-size: .88rem; }
+.rules b, .rules-score b { color: var(--text); }
+.rules b.rope { color: #e0727b; }
+b.gold, .rules-score b.gold { color: var(--gold); }
+.rules-score { margin: 16px 0 10px; padding: 10px 14px; border: 1px dashed var(--gold-soft); border-radius: 8px; font-size: .86rem; }
+.rules-tip { font-size: .8rem; color: var(--text-dim); margin-bottom: 4px; }
+.section.intro { border-color: var(--gold-soft); font-size: .88rem; }
+.section.intro p { margin-bottom: 12px; }
+.section.intro b { color: var(--gold); }
+#theme-banner .hint { font-size: .7rem; color: var(--text-dim); margin-top: 2px; }
+
+/* 判定 */
+.judge-card { text-align: center; }
+.judge-row { display: flex; flex-direction: column; align-items: center; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.judge-row .lbl { font-size: .72rem; letter-spacing: .2em; color: var(--text-dim); }
+.judge-row .val { font-family: var(--font-disp); font-size: 1.6rem; font-weight: 800; word-break: break-all; }
+.judge-row .val.gold { color: var(--gold); }
+.judge-buttons { display: flex; gap: 10px; margin-top: 16px; }
+.judge-buttons .btn { flex: 1; min-height: 50px; font-size: 1rem; }
+#guess-form input { margin-bottom: 4px; }
+
+/* 逆転チャンス */
+#panel-guess .phase-head p b.gold { color: var(--gold); }
+#panel-guess .phase-head p b.rope { color: #e0727b; }
+#guess-art { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; max-width: 560px; margin: 0 auto 16px; }
+#guess-art .frame { margin-bottom: 0; padding: 5px; }
+#guess-art .museum-plaque { margin: -3px 6px 0; padding: 4px 8px; }
+#guess-art .museum-plaque .artist { font-size: .8rem; }
+
+/* ---------- トースト ---------- */
+#toast-stack { position: fixed; bottom: calc(18px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 10000; width: min(92vw, 420px); }
+.toast {
+  background: rgba(23,20,17,.96); border: 1px solid var(--gold-soft);
+  color: var(--text); border-radius: 8px; padding: 11px 16px;
+  font-size: .84rem; box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  animation: toast-in .3s ease both;
+}
+.toast.err { border-color: var(--rope); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+.toast.out { opacity: 0; transition: opacity .3s; }
+
+footer { text-align: center; margin-top: 36px; font-size: .7rem; color: #6b6354; letter-spacing: .15em; }
+
+/* ---------- モバイル ---------- */
+@media (max-width: 600px) {
+  .container { padding: 12px 16px 40px; }
+  .gallery-grid { grid-template-columns: 1fr; }
+  #room-code-display { font-size: 1.9rem; }
+
+  /* 制作中はヘッダーを畳んでカンヴァスを広く、手札は画面下のトレイに固定 */
+  body.in-game header, body.in-game footer { display: none; }
+  body.in-game #status-bar { margin-bottom: 10px; }
+  body.in-game .container { padding-bottom: calc(220px + env(safe-area-inset-bottom)); }
+  body.in-game #toast-stack { bottom: calc(224px + env(safe-area-inset-bottom)); }
+  #theme-banner { padding: 8px 12px; margin-bottom: 10px; }
+  #theme-banner .theme { font-size: 1.25rem; }
+  #panel-game .frame { padding: 7px; margin-bottom: 0; }
+
+  #game-dock {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 500;
+    padding: 4px max(12px, env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    background: rgba(23,20,17,.94);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    border-top: 1px solid var(--gold-soft);
+    box-shadow: 0 -10px 30px rgba(0,0,0,.5);
+  }
+  #game-dock .hand-label { display: none; }
+  #game-dock #hand-area {
+    background: transparent; border: none; border-radius: 0;
+    flex-wrap: nowrap; gap: 12px; padding: 16px 0 2px; min-height: 118px;
+  }
+  #game-dock .card.front-card { width: 64px; height: 64px; }
+  #game-dock .action-row { margin: 8px 0 0; flex-wrap: nowrap; }
+  #game-dock .action-row .btn { flex: 1; min-height: 46px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .canvas-card.pop svg, .card.front-card.flip-anim, #vote-dock, .card-controls,
+  .reveal-banner.slam, #timer-chip.hurry, .dots i { animation: none !important; }
+  #reveal-art .stamp { animation: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="plaque">
+      <h1>すれちがい美術展</h1>
+      <span class="en">SURECHIGAI ART EXHIBITION</span>
+    </div>
+  </header>
+
+  <div id="status-bar">
+    <span id="conn-dot"></span>
+    <span id="status-text">未接続 — 展覧会を開くか、招待コードで入場してください</span>
+    <span id="timer-chip" hidden></span>
+    <button id="btn-rules" class="icon-btn" data-open-rules title="遊び方" aria-label="遊び方">?</button>
+    <button id="room-chip" title="タップで招待リンクをコピー">— — — —</button>
+  </div>
+
+  <!-- ============ ロビー(入口) ============ -->
+  <div id="panel-lobby" class="panel active">
+    <div class="section intro">
+      <p><b>1人だけお題が違う「贋作師」</b>が紛れ込んでいます。図形カードで絵を描き、絵の違和感から贋作師を見破ろう。<br>自分が贋作師かどうかは、<b>本人にも分かりません</b>。</p>
+      <button class="btn btn-ghost btn-sm" data-open-rules>遊び方を見る(1分)</button>
+    </div>
+
+    <div class="section">
+      <label class="field-label" for="input-name">アーティスト名</label>
+      <input type="text" id="input-name" maxlength="12" placeholder="例:ゴッホ太郎" autocomplete="nickname">
+    </div>
+
+    <div class="section">
+      <h3>展覧会を開催する</h3>
+      <p class="desc">あなたがホストになります。発行される4文字のコードか招待リンクを仲間に共有してください。(3〜8人)</p>
+      <button class="btn btn-gold btn-full" id="btn-create">新しい展覧会を開く</button>
+    </div>
+
+    <div class="divider">または</div>
+
+    <div class="section">
+      <h3>展覧会に入場する</h3>
+      <p class="desc">ホストから受け取った4文字の招待コードを入力してください。</p>
+      <input type="text" id="input-room-code" class="code" maxlength="4" placeholder="ABCD" autocomplete="off" autocapitalize="characters">
+      <button class="btn btn-ghost btn-full" id="btn-join">入場する</button>
+    </div>
+  </div>
+
+  <!-- ============ 待機室 ============ -->
+  <div id="panel-room" class="panel">
+    <div class="section">
+      <h3>招待コード</h3>
+      <div id="room-code-display">— — — —</div>
+      <p class="desc" style="text-align:center;">このコードか招待リンクを仲間に伝えてください</p>
+      <div class="room-actions">
+        <button class="btn btn-ghost btn-sm" id="btn-copy-code">コードをコピー</button>
+        <button class="btn btn-ghost btn-sm" id="btn-copy-link">招待リンクをコピー</button>
+      </div>
+      <h3 style="margin-bottom:10px;">参加アーティスト <span id="player-count" style="color:var(--text-dim);font-size:.8em;"></span></h3>
+      <div class="player-list" id="lobby-players"></div>
+      <button class="btn btn-rope btn-full" id="btn-start" style="display:none;" disabled>開幕する(3人以上で開始できます)</button>
+      <p class="desc" id="guest-wait-msg" style="display:none;text-align:center;margin-top:14px;margin-bottom:0;">ホストの開幕を待っています…</p>
+    </div>
+  </div>
+
+  <!-- ============ 制作フェーズ ============ -->
+  <div id="panel-game" class="panel">
+    <div id="theme-banner">
+      <div class="lbl">ROUND <span id="round-no">1</span> — あなたのお題</div>
+      <div class="theme" id="my-theme">???</div>
+      <div class="hint">1人だけ少し違うお題です。あなたが贋作師かもしれません</div>
+    </div>
+
+    <div class="frame canvas-frame"><div id="canvas-stage"><div id="canvas-area"></div></div></div>
+
+    <div id="game-dock">
+      <p class="hand-label">手札をタップでカンヴァスへ(ドラッグで好きな位置に)／ 置いたカードはタップで回転・反転・回収</p>
+      <div id="hand-area"></div>
+      <div class="action-row">
+        <button id="btn-mulligan" class="btn btn-ghost btn-sm">手札を引き直す(1回)</button>
+        <button id="btn-submit" class="btn btn-moss">作品を完成させる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ ギャラリー(投票) ============ -->
+  <div id="panel-gallery" class="panel">
+    <div class="phase-head">
+      <h2>ギャラリートーク &amp; 品評会</h2>
+      <p>1人だけ違うお題で描いた<b style="color:var(--rope);">贋作師</b>がいます。自分のお題と比べて、ズレている作品に投票しましょう。<br>最多得票が1人に決まり、それが贋作師なら見破り成功(同票なら贋作師の逃げ切り)。</p>
+    </div>
+    <div id="gallery-container" class="gallery-grid"></div>
+    <p id="vote-progress"></p>
+    <div id="vote-dock" class="dock-fixed" hidden>
+      <div class="vote-dock-text">贋作師は <b id="vote-dock-name"></b> ?</div>
+      <div class="vote-dock-actions">
+        <button class="btn btn-ghost btn-sm" id="btn-vote-cancel">やめる</button>
+        <button class="btn btn-rope" id="btn-vote-confirm">投票を確定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 逆転チャンス ============ -->
+  <div id="panel-guess" class="panel">
+    <div class="phase-head">
+      <h2>逆転のチャンス</h2>
+      <p id="guess-lead"></p>
+    </div>
+    <p class="hand-label">ヒント:みんなの作品</p>
+    <div id="guess-art"></div>
+    <div class="section">
+      <h3>みんなのお題は?</h3>
+      <div id="guess-form">
+        <p class="desc">答えを入力してください。ほかの人が「正解」と判定すれば大逆転です。</p>
+        <input type="text" id="input-guess" maxlength="20" placeholder="例:トラ" autocomplete="off" enterkeyhint="send">
+        <button id="btn-guess-confirm" class="btn btn-gold btn-full">この答えで勝負!</button>
+      </div>
+      <p class="desc" id="guess-wait" style="text-align:center;margin:12px 0 0;"></p>
+    </div>
+  </div>
+
+  <!-- ============ 判定 ============ -->
+  <div id="panel-judge" class="panel">
+    <div class="phase-head">
+      <h2>判定タイム</h2>
+      <p>贋作師の答えは、みんなのお題と同じもの?</p>
+    </div>
+    <div class="section judge-card">
+      <div class="judge-row"><span class="lbl">贋作師の答え</span><span class="val" id="judge-answer"></span></div>
+      <div class="judge-row"><span class="lbl">みんなのお題</span><span class="val gold" id="judge-master"></span></div>
+      <div class="judge-buttons" id="judge-buttons">
+        <button class="btn btn-ghost" id="btn-judge-ng">✕ 不正解</button>
+        <button class="btn btn-gold" id="btn-judge-ok">◯ 正解</button>
+      </div>
+      <p class="desc" id="judge-progress" style="text-align:center;margin:12px 0 0;"></p>
+    </div>
+  </div>
+
+  <!-- ============ 結果 ============ -->
+  <div id="panel-result" class="panel">
+    <div class="phase-head"><h2>結果発表</h2></div>
+    <div id="result-banner"></div>
+    <div id="reveal-art" class="seq"></div>
+    <div class="section seq" id="result-votes">
+      <h3>得票数</h3>
+      <div class="vote-table" id="vote-table"></div>
+    </div>
+    <div class="section seq" id="result-scores">
+      <h3>通算スコア</h3>
+      <div id="score-board"></div>
+    </div>
+    <div class="seq" id="result-actions">
+      <button id="btn-next-round" class="btn btn-gold btn-full" style="display:none;">次のラウンドへ</button>
+      <p class="desc" id="result-wait-msg" style="display:none;text-align:center;margin-top:12px;">ホストが次のラウンドを開始するのを待っています…</p>
+    </div>
+  </div>
+
+  <footer>SURECHIGAI ART EXHIBITION — P2P PARTY GAME</footer>
+</div>
+
+<div id="toast-stack"></div>
+
+<!-- ============ 遊び方 ============ -->
+<div id="rules-modal" class="modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="rules-title">
+    <button class="icon-btn modal-close" data-close-rules aria-label="閉じる">✕</button>
+    <h2 id="rules-title">遊び方</h2>
+    <ol class="rules">
+      <li><b>お題が配られる</b> — 全員に同じお題が配られますが、<b>1人だけ少し違うお題</b>です(例:みんなは「トラ」、1人だけ「ライオン」)。その1人が<b class="rope">贋作師</b>。自分が贋作師かどうかは、本人にも分かりません。</li>
+      <li><b>制作(90秒)</b> — 手札の図形カード4枚でお題を表現します。カードには表と裏に別の図形があり、「裏返す」で使う面を選べます。手札をタップするとカンヴァスに置けて、置いたカードはタップすると回転・裏返し・手札に戻せます。手札の引き直しは1回だけ。</li>
+      <li><b>品評会(60秒)</b> — 全員の作品を見比べて、お題がズレていそうな人に投票します。自分には投票できません。</li>
+      <li><b>開票</b> — 最多得票が1人に決まり、それが贋作師なら見破り成功。同票や見当違いなら贋作師の逃げ切りです。</li>
+      <li><b>逆転チャンス</b> — 見破られた贋作師は、みんなのお題を自由入力で当てられます。ほかの人が判定して、半数以上が「正解」と認めれば大逆転。</li>
+    </ol>
+    <div class="rules-score">
+      <div><b>得点</b></div>
+      <div>見破り成功 → 贋作師以外の全員 <b class="gold">+1</b></div>
+      <div>逃げ切り・大逆転 → 贋作師 <b class="gold">+2</b></div>
+    </div>
+    <p class="rules-tip">コツ:はっきり描きすぎると贋作師にお題がバレて逆転されます。ぼかしすぎると自分が疑われます。そのさじ加減が勝負!</p>
+    <button class="btn btn-gold btn-full" data-close-rules>わかった</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ============================================================
+   定数・お題
+   ============================================================ */
+const ROOM_PREFIX = 'surechigai-art-v2-';
+const MAX_PLAYERS = 8;
+const CARD_SIZE   = 64;
+const CANVAS_W    = 480;   // カンヴァスの論理サイズ(表示時は画面幅に合わせて拡縮)
+const CANVAS_H    = 360;
+const DRAW_SEC    = 90;    // 制作の制限時間
+const VOTE_SEC    = 60;    // 投票の制限時間
+const GUESS_SEC   = 45;    // 逆転チャンス(贋作師の回答)の制限時間
+const JUDGE_SEC   = 25;    // 回答の判定の制限時間
+const MIN_PLAYERS = 3;     // 2人だと互いに投票して必ず同票になり、ゲームが成立しない
+
+// master: 正統派のお題 / faker: 贋作師に渡される似て非なるお題
+const THEMES = [
+  { master:'アンパンマン', faker:'ドラえもん' },
+  { master:'りんご',       faker:'いちご' },
+  { master:'トラ',         faker:'ライオン' },
+  { master:'ペンギン',     faker:'にわとり' },
+  { master:'靴下',         faker:'手袋' },
+  { master:'富士山',       faker:'ピラミッド' },
+  { master:'太陽',         faker:'ひまわり' },
+  { master:'電車',         faker:'バス' },
+  { master:'カニ',         faker:'エビ' },
+  { master:'メガネ',       faker:'双眼鏡' },
+  { master:'傘',           faker:'きのこ' },
+  { master:'雪だるま',     faker:'鏡もち' },
+  { master:'ロケット',     faker:'鉛筆' },
+  { master:'時計',         faker:'観覧車' },
+  { master:'ハンバーガー', faker:'パンケーキ' },
+  { master:'ネコ',         faker:'キツネ' },
+  { master:'チューリップ', faker:'ワイングラス' },
+  { master:'信号機',       faker:'三色だんご' },
+  { master:'テレビ',       faker:'電子レンジ' },
+  { master:'カメ',         faker:'ヘルメット' },
+  { master:'飛行機',       faker:'トンボ' },
+  { master:'ショートケーキ', faker:'シルクハット' },
+  { master:'スイカ',       faker:'ボウリング球' },
+  { master:'カタツムリ',   faker:'ソフトクリーム' },
+  { master:'おにぎり',     faker:'ヨット' },
+];
+
+const COLORS = ['#e53935','#1e88e5','#fdd835','#43a047','#212121','#ffffff'];
+const SHAPES = [
+  { type:'circle',   size:50 }, { type:'circle', size:20 },
+  { type:'rect',     size:50 }, { type:'rect',   size:20 },
+  { type:'triangle' }, { type:'line' }, { type:'cross' },
+];
+
+/* ============================================================
+   ユーティリティ
+   ============================================================ */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function toast(msg, isErr) {
+  const t = document.createElement('div');
+  t.className = 'toast' + (isErr ? ' err' : '');
+  t.textContent = msg;
+  $('toast-stack').appendChild(t);
+  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 350); }, 3200);
+}
+
+function genRoomCode() {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // 紛らわしい I/L/O/0/1 を除外
+  let c = '';
+  for (let i = 0; i < 4; i++) c += chars[Math.floor(Math.random() * chars.length)];
+  return c;
+}
+
+async function copyText(text, doneMsg) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(doneMsg);
+  } catch (_) {
+    // クリップボードAPI不可の環境(非https等)向けフォールバック
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); toast(doneMsg); }
+    catch (e) { toast('コピーできませんでした: ' + text, true); }
+    ta.remove();
+  }
+}
+
+function showPanel(id) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  $(id).classList.add('active');
+  document.body.classList.toggle('in-game', id === 'panel-game');
+}
+function buzz(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch (_) {} }
+function setStatus(msg) { $('status-text').textContent = msg; }
+function setConnected(on) { $('conn-dot').classList.toggle('on', on); }
+
+/* ============================================================
+   デッキ・SVG
+   ============================================================ */
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// 72枚の図形をシャッフルし、表裏ペアにした36枚の「物理カード」を作る
+function generateDeckPairs() {
+  const all = [];
+  let id = 0;
+  for (const color of COLORS) {
+    [2,2,2,2,2,1,1].forEach((n, idx) => {
+      for (let i = 0; i < n; i++) all.push({ id: id++, color, shape: SHAPES[idx] });
+    });
+  }
+  shuffle(all);
+  const pairs = [];
+  for (let i = 0; i < all.length - 1; i += 2) {
+    pairs.push({ pairId: i / 2, front: all[i], back: all[i + 1] });
+  }
+  return pairs;
+}
+
+function makeSvg(shapeData) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 100 100');
+  const g = document.createElementNS(ns, 'g');
+  g.setAttribute('fill', shapeData.color);
+  if (shapeData.color === '#ffffff') { g.setAttribute('stroke', '#b6ab93'); g.setAttribute('stroke-width', '4'); }
+  const { type, size } = shapeData.shape;
+  if (type === 'circle') {
+    const c = document.createElementNS(ns, 'circle');
+    c.setAttribute('cx', '50'); c.setAttribute('cy', '50'); c.setAttribute('r', size === 50 ? '40' : '15');
+    g.appendChild(c);
+  } else if (type === 'rect') {
+    const s = size === 50 ? 80 : 30;
+    const r = document.createElementNS(ns, 'rect');
+    r.setAttribute('x', 50 - s/2); r.setAttribute('y', 50 - s/2);
+    r.setAttribute('width', s); r.setAttribute('height', s);
+    g.appendChild(r);
+  } else if (type === 'triangle') {
+    const p = document.createElementNS(ns, 'polygon');
+    p.setAttribute('points', '50,12 88,85 12,85'); g.appendChild(p);
+  } else if (type === 'line') {
+    const l = document.createElementNS(ns, 'line');
+    l.setAttribute('x1','10'); l.setAttribute('y1','50'); l.setAttribute('x2','90'); l.setAttribute('y2','50');
+    l.setAttribute('stroke', shapeData.color); l.setAttribute('stroke-width','9'); l.setAttribute('stroke-linecap','round');
+    g.appendChild(l);
+  } else if (type === 'cross') {
+    [['20','20','80','80'],['80','20','20','80']].forEach(([x1,y1,x2,y2]) => {
+      const l = document.createElementNS(ns, 'line');
+      l.setAttribute('x1',x1); l.setAttribute('y1',y1); l.setAttribute('x2',x2); l.setAttribute('y2',y2);
+      l.setAttribute('stroke', shapeData.color); l.setAttribute('stroke-width','10'); l.setAttribute('stroke-linecap','round');
+      g.appendChild(l);
+    });
+  }
+  svg.appendChild(g);
+  return svg;
+}
+
+/* ============================================================
+   P2P 状態
+   ============================================================ */
+let peer = null;
+let connections = [];      // ホストのみ: ゲストとの接続
+let hostConn = null;       // ゲストのみ: ホストとの接続
+let isHost = false;
+let myId = null;
+let myName = '';
+let roomCode = '';
+
+let gameState = { phase:'lobby', round:1, players:[], deck:[], resultInfo:null };
+
+const canvasStage = $('canvas-stage');
+const canvasArea  = $('canvas-area');
+const handArea    = $('hand-area');
+
+/* ---- ローカルUI状態 ---- */
+let localHandSides    = {};   // pairId -> 'front' | 'back'
+let selectedCardEl    = null;
+let controlsEl        = null;
+let localRenderedRound = 0;
+let myVoteTarget      = null;
+let pendingVote       = null; // 投票確定前に選んでいる作品
+let galleryAnimRound  = 0;    // 入場アニメーションを再生済みのラウンド
+let resultAnimRound   = 0;    // 結果発表の演出を再生済みのラウンド
+let resultTimers      = [];
+let canvasScale       = 1;
+let lastRenderedPhase = null;
+let localDeadline     = null; // このフェーズの締切(自分の時計基準)
+let autoSubmitRound   = 0;    // 時間切れの自動出展を済ませたラウンド
+
+/* ---- ホストのみ ---- */
+let currentTheme      = null; // 今ラウンドのお題(ゲストには送らない)
+let phaseTimer        = null;
+let judgeVotes        = {};   // 回答判定: playerId -> true(正解) / false(不正解)
+
+/* ---- カンヴァスの拡縮 ---- */
+function fitCanvas() {
+  const w = canvasStage.clientWidth;
+  if (!w) return;   // パネル非表示中
+  canvasScale = w / CANVAS_W;
+  canvasArea.style.transform = `scale(${canvasScale})`;
+  if (selectedCardEl) moveControls(selectedCardEl);
+}
+new ResizeObserver(fitCanvas).observe(canvasStage);
+
+// 画面座標 → カンヴァスの論理座標
+function canvasPoint(clientX, clientY) {
+  const r = canvasArea.getBoundingClientRect();
+  return {
+    x: (clientX - r.left) / canvasScale,
+    y: (clientY - r.top)  / canvasScale,
+    inside: clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom,
+  };
+}
+
+/* ============================================================
+   ホスト処理
+   ============================================================ */
+function initHost() {
+  myName = ($('input-name').value.trim() || 'ホスト').slice(0, 12);
+  $('btn-create').disabled = true;
+  setStatus('展覧会を準備しています…');
+  tryOpenRoom(0);
+}
+
+function tryOpenRoom(attempt) {
+  if (attempt >= 5) {
+    toast('部屋を作成できませんでした。時間をおいて再度お試しください。', true);
+    $('btn-create').disabled = false;
+    setStatus('未接続');
+    return;
+  }
+  roomCode = genRoomCode();
+  const p = new Peer(ROOM_PREFIX + roomCode);
+
+  p.on('open', id => {
+    peer = p;
+    isHost = true;
+    myId = id;
+    setConnected(true);
+    gameState.players = [{ id: myId, name: myName, index: 0, isReady: false,
+                           vote: null, hasVoted: false, score: 0, disconnected: false }];
+    enterWaitingRoom();
+    setStatus('展覧会を開きました。コードを仲間に伝えてください。');
+    toast('招待コード: ' + roomCode);
+  });
+
+  p.on('connection', conn => {
+    conn.on('open', () => {
+      // ロビーの人数 = ホスト + 受け入れ済みの接続
+      if (connections.length + 1 >= MAX_PLAYERS) {
+        conn.send({ type:'error', msg:'満員です(最大8人)' });
+        setTimeout(() => conn.close(), 500);
+        return;
+      }
+      if (!canJoinNow()) {
+        conn.send({ type:'error', msg:'ラウンドの途中なので入場できません。結果発表の画面になったら、もう一度入場してください。' });
+        setTimeout(() => conn.close(), 500);
+        return;
+      }
+      connections.push(conn);
+    });
+    conn.on('data',  data => handleFromGuest(conn, data));
+    conn.on('close', ()   => handleGuestLeave(conn));
+    conn.on('error', ()   => handleGuestLeave(conn));
+  });
+
+  p.on('error', err => {
+    if (err.type === 'unavailable-id') {       // コード衝突 → 引き直し
+      p.destroy();
+      tryOpenRoom(attempt + 1);
+    } else {
+      handlePeerError(err);
+      $('btn-create').disabled = false;
+    }
+  });
+  p.on('disconnected', () => { if (peer && !peer.destroyed) peer.reconnect(); });
+}
+
+function handleGuestLeave(conn) {
+  connections = connections.filter(c => c !== conn);
+  const p = gameState.players.find(x => x.id === conn.peer);
+  if (!p || p.disconnected) return;
+  if (gameState.phase === 'lobby') {
+    gameState.players = gameState.players.filter(x => x.id !== conn.peer);
+    gameState.players.forEach((x, i) => x.index = i);
+  } else {
+    p.disconnected = true;
+  }
+  toast(`${p.name} が退出しました`, true);
+
+  // ゲーム中に1人になったら続行できないので待機室へ戻す
+  // (結果発表中は画面を残し、「次のラウンドへ」の時点で判定する)
+  if (!canJoinNow() && activePlayers().length < MIN_PLAYERS) {
+    backToLobby('人数が足りなくなったため、待機室に戻りました');
+    return;
+  }
+  if (gameState.phase === 'game')         checkAllReady();
+  else if (gameState.phase === 'gallery') checkAllVoted();
+  else if (gameState.phase === 'guess' && p.isFaker) finishRound(null, null);
+  else if (gameState.phase === 'judge') checkAllJudged();
+  else syncAll();
+}
+
+function backToLobby(msg) {
+  clearTimeout(phaseTimer);
+  gameState.phase = 'lobby';
+  gameState.round++;
+  gameState.deadline = null;
+  gameState.resultInfo = null;
+  gameState.guessInfo = null;
+  gameState.players = activePlayers();
+  gameState.players.forEach((x, i) => { x.index = i; x.isReady = false; x.hasVoted = false; x.vote = null; });
+  connections.forEach(c => { if (c.open) c.send({ type:'notice', msg }); });
+  toast(msg, true);
+  syncAll();
+}
+
+function handleFromGuest(conn, data) {
+  if (!connections.includes(conn)) return;   // 満員・開幕済みで断った接続は無視
+  if (data.type === 'join') {
+    if (!canJoinNow() || gameState.players.some(p => p.id === conn.peer)) return;
+    // 同名なら自動で連番を付与
+    let name = String(data.name || 'ゲスト').slice(0, 12);
+    let base = name, n = 2;
+    while (gameState.players.some(p => p.name === name && !p.disconnected)) name = `${base}${n++}`;
+    gameState.players.push({ id: conn.peer, name, index: gameState.players.length,
+                             isReady:false, vote:null, hasVoted:false, score:0, disconnected:false });
+    toast(gameState.phase === 'lobby' ? `${name} が入場しました` : `${name} が入場しました(次のラウンドから参加)`);
+    syncAll();
+    return;
+  }
+  const player = gameState.players.find(p => p.id === conn.peer);
+  if (!player || player.disconnected) return;
+
+  if (data.type === 'submit_canvas' && gameState.phase === 'game') {
+    player.canvas  = sanitizeCanvas(data.canvasData, player.hand);
+    player.canvasW = CANVAS_W;
+    player.canvasH = CANVAS_H;
+    player.isReady = true;
+    checkAllReady();
+  } else if (data.type === 'mulligan' && gameState.phase === 'game') {
+    if (!player.mulliganUsed && gameState.deck.length >= 4) {
+      player.mulliganUsed = true;
+      player.hand = gameState.deck.splice(0, 4);
+    }
+    syncAll();   // 断った場合も同期して、ゲスト側で消した手札を元に戻させる
+  } else if (data.type === 'vote' && gameState.phase === 'gallery') {
+    const t = +data.voteTarget;
+    if (Number.isInteger(t) && t >= 0 && t < gameState.players.length && t !== player.index) {
+      player.vote = t;
+      player.hasVoted = true;
+      checkAllVoted();
+    }
+  } else if (data.type === 'guess' && gameState.phase === 'guess' && player.isFaker) {
+    submitGuess(data.answer);
+  } else if (data.type === 'judge' && gameState.phase === 'judge' && !player.isFaker) {
+    recordJudge(player, data.ok);
+  }
+}
+
+// ゲストから届いた作品データは全員の画面にそのまま描かれるので、形を厳しく揃えてから受け入れる
+// (細工した値で外部 URL を読ませたり、描画を壊したりされないように)
+function sanitizeCanvas(raw, hand) {
+  if (!Array.isArray(raw)) return [];
+  const ids = new Set((hand || []).map(h => String(h.pairId)));
+  const seen = new Set();
+  const clamp01 = v => Math.min(1, Math.max(0, Number.isFinite(+v) ? +v : 0));
+  const out = [];
+  for (const cd of raw) {
+    const id = String(cd && cd.pairId);
+    if (!ids.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    const rot = Number.isFinite(+cd.rotation) ? (+cd.rotation % 360) : 0;
+    out.push({
+      pairId:   id,
+      side:     cd.side === 'back' ? 'back' : 'front',
+      leftPct:  clamp01(cd.leftPct),
+      topPct:   clamp01(cd.topPct),
+      rotation: String(rot),
+    });
+  }
+  return out;
+}
+
+function activePlayers() { return gameState.players.filter(p => !p.disconnected); }
+function canJoinNow() { return gameState.phase === 'lobby' || gameState.phase === 'result'; }
+
+/* ---- 制限時間(締切はホストが管理し、ゲストには残り時間で伝える) ---- */
+function armPhaseTimer(sec) {
+  clearTimeout(phaseTimer);
+  gameState.deadline = Date.now() + sec * 1000;
+  const phase = gameState.phase, round = gameState.round;
+  // 制作は各自が締切で自動出展するので、それが届くまで少し待つ
+  const grace = phase === 'game' ? 2500 : 300;
+  phaseTimer = setTimeout(() => {
+    if (gameState.phase !== phase || gameState.round !== round) return;
+    onPhaseTimeout();
+  }, sec * 1000 + grace);
+}
+
+function onPhaseTimeout() {
+  if (gameState.phase === 'game') {
+    activePlayers().forEach(p => { if (!p.isReady) { p.isReady = true; p.canvas = p.canvas || []; } });
+    checkAllReady();
+  } else if (gameState.phase === 'gallery') {
+    activePlayers().forEach(p => { if (!p.hasVoted) { p.hasVoted = true; p.vote = null; } });
+    checkAllVoted();
+  } else if (gameState.phase === 'guess') {
+    submitGuess('');
+  } else if (gameState.phase === 'judge') {
+    resolveJudge();
+  }
+}
+
+function checkAllReady() {
+  if (gameState.phase === 'game' && activePlayers().every(p => p.isReady)) {
+    gameState.phase = 'gallery';
+    armPhaseTimer(VOTE_SEC);
+  }
+  syncAll();
+}
+
+function checkAllVoted() {
+  if (gameState.phase === 'gallery' && activePlayers().every(p => p.hasVoted)) {
+    const t = tallyVotes();
+    const faker = gameState.players[t.fakerIndex];
+    if (t.caught && !faker.disconnected) {
+      // 見破られた贋作師に、正統派のお題を当てる逆転チャンス
+      gameState.phase = 'guess';
+      gameState.guessInfo = { fakerIndex: faker.index, fakerName: faker.name };
+      armPhaseTimer(GUESS_SEC);
+    } else {
+      finishRound(null, null);
+      return;
+    }
+  }
+  syncAll();
+}
+
+function tallyVotes() {
+  const players = gameState.players;
+  const votes = new Array(players.length).fill(0);
+  players.forEach(p => { if (p.hasVoted && p.vote !== null) votes[p.vote]++; });
+  const fakerIndex = players.find(p => p.isFaker).index;
+  const maxV = Math.max(...votes, 0);
+  const tops = votes.map((v, i) => v === maxV && v > 0 ? i : -1).filter(i => i >= 0);
+  return { votes, fakerIndex, caught: tops.length === 1 && tops[0] === fakerIndex };
+}
+
+// 表記ゆれを吸収して比較する(全角半角・カタカナ/ひらがな・空白や記号)
+function normalizeAnswer(str) {
+  return String(str || '').normalize('NFKC').toLowerCase()
+    .replace(/[\u30a1-\u30f6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60))
+    .replace(/[\s「」『』()\[\]、。,.!?・~〜]/g, '');
+}
+
+function submitGuess(answer) {
+  if (gameState.phase !== 'guess') return;
+  answer = String(answer || '').trim().slice(0, 20);
+  if (!answer) { finishRound(null, null); return; }
+  // 完全一致なら判定するまでもなく正解
+  if (normalizeAnswer(answer) === normalizeAnswer(currentTheme.master)) {
+    finishRound(answer, { auto: true, ok: true, accept: 0, reject: 0 });
+    return;
+  }
+  gameState.phase = 'judge';
+  gameState.guessInfo.answer = answer;
+  gameState.guessInfo.master = currentTheme.master;
+  gameState.guessInfo.judgedIds = [];
+  judgeVotes = {};
+  armPhaseTimer(JUDGE_SEC);
+  syncAll();
+}
+
+function recordJudge(player, ok) {
+  judgeVotes[player.id] = !!ok;
+  gameState.guessInfo.judgedIds = Object.keys(judgeVotes);
+  checkAllJudged();
+}
+
+function judges() { return activePlayers().filter(p => !p.isFaker); }
+
+function checkAllJudged() {
+  if (gameState.phase !== 'judge') return;
+  if (judges().every(p => p.id in judgeVotes)) resolveJudge();
+  else syncAll();
+}
+
+// 判定した人の半数以上が「正解」なら逆転。誰も判定しなければ不正解
+function resolveJudge() {
+  if (gameState.phase !== 'judge') return;
+  let accept = 0, reject = 0;
+  judges().forEach(p => {
+    if (!(p.id in judgeVotes)) return;
+    if (judgeVotes[p.id]) accept++; else reject++;
+  });
+  const ok = accept + reject > 0 && accept >= reject;
+  finishRound(gameState.guessInfo.answer, { auto: false, ok, accept, reject });
+}
+
+function finishRound(guess, judge) {
+  clearTimeout(phaseTimer);
+  const players = gameState.players;
+  const { votes, fakerIndex, caught } = tallyVotes();
+  const faker = players[fakerIndex];
+  const reversed = caught && !!(judge && judge.ok);
+
+  // スコア: 見破られたら正統派+1 / 逃げ切り・逆転なら贋作師+2
+  const fakerWins = !caught || reversed;
+  const deltas = new Array(players.length).fill(0);
+  players.forEach(p => {
+    if (p.disconnected) return;
+    if (!fakerWins && !p.isFaker) { p.score += 1; deltas[p.index] = 1; }
+    if (fakerWins && p.isFaker)   { p.score += 2; deltas[p.index] = 2; }
+  });
+
+  gameState.phase = 'result';
+  gameState.deadline = null;
+  gameState.guessInfo = null;
+  gameState.resultInfo = {
+    votes, caught, reversed, deltas, fakerIndex,
+    guess, judge,
+    fakerName:   faker.name,
+    fakerTheme:  currentTheme.faker,
+    masterTheme: currentTheme.master,
+    roles: players.map(p => !!p.isFaker),
+  };
+  syncAll();
+}
+
+function startRound() {
+  gameState.phase = 'game';
+  gameState.resultInfo = null;
+  gameState.guessInfo = null;
+  gameState.deck = generateDeckPairs();
+  // 切断者を整理(ロビー復帰扱い)
+  gameState.players = activePlayers();
+  gameState.players.forEach((p, i) => p.index = i);
+
+  currentTheme = THEMES[Math.floor(Math.random() * THEMES.length)];
+  const fakerIdx = Math.floor(Math.random() * gameState.players.length);
+  gameState.players.forEach((p, i) => {
+    p.isFaker = (i === fakerIdx);
+    p.theme   = p.isFaker ? currentTheme.faker : currentTheme.master;
+    p.hand    = gameState.deck.splice(0, 4);
+    p.canvas  = []; p.canvasW = 0; p.canvasH = 0;
+    p.isReady = false; p.vote = null; p.hasVoted = false; p.mulliganUsed = false;
+  });
+  armPhaseTimer(DRAW_SEC);
+  syncAll();
+}
+
+/* ---- プレイヤーごとに情報を絞って同期(お題・役職の漏洩防止) ---- */
+function sanitizeFor(targetId) {
+  const s = JSON.parse(JSON.stringify(gameState));
+  s.deckLeft = gameState.deck.length;   // 引き直しできるかの表示用
+  delete s.deck;
+  s.timeLeft = s.deadline ? Math.max(0, s.deadline - Date.now()) : null;   // 端末間の時計ずれを避けて残り時間で送る
+  delete s.deadline;
+  s.players.forEach(p => {
+    delete p.vote;                       // 誰に投票したかは伏せる
+    delete p.isFaker;                    // 役職は結果発表(resultInfo.roles)まで本人にも伏せる
+    if (p.id !== targetId) delete p.theme;   // 他人のお題は秘匿
+  });
+  return s;
+}
+
+function syncAll() {
+  if (!isHost) return;
+  connections.forEach(c => {
+    if (c.open) c.send({ type:'sync', state: sanitizeFor(c.peer) });
+  });
+  renderLocalState();
+}
+
+/* ============================================================
+   ゲスト処理
+   ============================================================ */
+function initGuest() {
+  const code = $('input-room-code').value.trim().toUpperCase();
+  if (!/^[A-Z0-9]{4}$/.test(code)) { toast('4文字の招待コードを入力してください', true); return; }
+  myName = ($('input-name').value.trim() || 'ゲスト').slice(0, 12);
+  roomCode = code;
+  $('btn-join').disabled = true;
+  setStatus('展覧会に接続しています…');
+
+  const p = new Peer();
+  let opened = false;
+
+  p.on('open', id => {
+    peer = p;
+    myId = id;
+    hostConn = p.connect(ROOM_PREFIX + code, { reliable: true });
+
+    const joinTimeout = setTimeout(() => {
+      if (!opened) {
+        toast('部屋が見つかりません。コードを確認してください。', true);
+        p.destroy(); resetToLobby();
+      }
+    }, 8000);
+
+    hostConn.on('open', () => {
+      opened = true;
+      clearTimeout(joinTimeout);
+      setConnected(true);
+      hostConn.send({ type:'join', name: myName });
+      setStatus('接続しました。ホストの開幕を待っています。');
+    });
+    hostConn.on('data',  handleFromHost);
+    hostConn.on('close', () => {
+      toast('ホストとの接続が切れました', true);
+      setConnected(false);
+      setTimeout(resetToLobby, 1500);
+    });
+  });
+
+  p.on('error', err => {
+    if (err.type === 'peer-unavailable') {
+      toast('部屋が見つかりません。コードを確認してください。', true);
+      resetToLobby();
+    } else {
+      handlePeerError(err);
+    }
+  });
+}
+
+function handleFromHost(data) {
+  if (data.type === 'error')  { toast(data.msg, true); setTimeout(resetToLobby, 1200); return; }
+  if (data.type === 'notice') { toast(data.msg, true); return; }
+  if (data.type === 'sync') {
+    const prevPhase = gameState.phase;
+    gameState = data.state;
+    localDeadline = gameState.timeLeft != null ? Date.now() + gameState.timeLeft : null;
+    if (prevPhase !== gameState.phase) { myVoteTarget = null; pendingVote = null; }
+    renderLocalState();
+  }
+}
+
+function resetToLobby() {
+  try { if (peer && !peer.destroyed) peer.destroy(); } catch (_) {}
+  peer = null; hostConn = null; connections = [];
+  isHost = false; myId = null; roomCode = '';
+  gameState = { phase:'lobby', round:1, players:[], deck:[], resultInfo:null };
+  localHandSides = {}; localRenderedRound = 0; myVoteTarget = null; pendingVote = null; galleryAnimRound = 0;
+  resultAnimRound = 0; localDeadline = null; autoSubmitRound = 0;
+  clearTimeout(phaseTimer);
+  resultTimers.forEach(clearTimeout); resultTimers = [];
+  deselectCard();
+  $('btn-create').disabled = false;
+  $('btn-join').disabled = false;
+  $('room-chip').style.display = 'none';
+  setConnected(false);
+  setStatus('未接続 — 展覧会を開くか、招待コードで入場してください');
+  showPanel('panel-lobby');
+}
+
+function handlePeerError(err) {
+  console.error('[peer error]', err);
+  const msgs = {
+    'network':        '通信サーバーに接続できません。ネットワークを確認してください。',
+    'server-error':   '通信サーバーで問題が発生しました。しばらくして再試行してください。',
+    'browser-incompatible': 'このブラウザはWebRTCに対応していません。',
+  };
+  toast(msgs[err.type] || `通信エラー: ${err.type || err}`, true);
+}
+
+/* ============================================================
+   待機室
+   ============================================================ */
+function enterWaitingRoom() {
+  showPanel('panel-room');
+  $('room-code-display').textContent = roomCode.split('').join(' ');
+  $('room-chip').style.display = 'inline-block';
+  $('room-chip').textContent = roomCode;
+  $('btn-start').style.display = isHost ? 'block' : 'none';
+  $('guest-wait-msg').style.display = isHost ? 'none' : 'block';
+  renderLobbyPlayers();
+}
+
+function renderLobbyPlayers() {
+  const list = $('lobby-players');
+  list.innerHTML = '';
+  gameState.players.forEach(p => {
+    const row = document.createElement('div');
+    row.className = 'player-row' + (p.disconnected ? ' gone' : '');
+    row.innerHTML =
+      `<span class="avatar">${esc(p.name.slice(0,1))}</span>` +
+      `<span>${esc(p.name)}${p.id === myId ? ' <span style="color:var(--text-dim);font-size:.78em;">(あなた)</span>' : ''}</span>` +
+      `<span class="tag ${p.index === 0 ? 'host' : ''}">${p.index === 0 ? 'ホスト' : 'スコア ' + (p.score||0)}</span>`;
+    list.appendChild(row);
+  });
+  const n = activeCount();
+  $('player-count').textContent = `${n} / ${MAX_PLAYERS}`;
+  if (isHost) {
+    const btn = $('btn-start');
+    btn.disabled = n < MIN_PLAYERS;
+    btn.textContent = n < MIN_PLAYERS ? `開幕する(あと${MIN_PLAYERS - n}人で開始できます)` : `開幕する(${n}人)`;
+  }
+}
+function activeCount() { return gameState.players.filter(p => !p.disconnected).length; }
+
+function inviteUrl() {
+  return location.origin + location.pathname + '?room=' + roomCode;
+}
+
+/* ============================================================
+   手札の描画
+   ============================================================ */
+function renderHand(pairs) {
+  deselectCard();
+  handArea.innerHTML = '';
+  canvasArea.innerHTML = '';
+  (pairs || []).forEach(pair => {
+    if (localHandSides[pair.pairId] === undefined) localHandSides[pair.pairId] = 'front';
+    addPairToHand(pair);
+  });
+}
+
+function addPairToHand(pair) {
+  const pairId = pair.pairId;
+  if (localHandSides[pairId] === undefined) localHandSides[pairId] = 'front';
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'card-pair';
+  wrapper.dataset.pairId = pairId;
+
+  const frontEl = document.createElement('div');
+  frontEl.className = 'card front-card';
+  frontEl.dataset.pairId = pairId;
+
+  const backEl = document.createElement('div');
+  backEl.className = 'card back-card';
+  backEl.title = '裏面(タップで裏返す)';
+
+  function refreshSides(animate) {
+    const active   = localHandSides[pairId] || 'front';
+    const inactive = active === 'front' ? 'back' : 'front';
+    frontEl.dataset.side = active;
+    frontEl.replaceChildren(makeSvg(pair[active]));
+    backEl.replaceChildren(makeSvg(pair[inactive]));
+    if (animate) {
+      frontEl.classList.remove('flip-anim');
+      void frontEl.offsetWidth;   // アニメーションを再始動
+      frontEl.classList.add('flip-anim');
+    }
+  }
+  refreshSides(false);
+
+  const flip = e => {
+    e.stopPropagation();
+    localHandSides[pairId] = (localHandSides[pairId] === 'front') ? 'back' : 'front';
+    refreshSides(true);
+    buzz(8);
+  };
+
+  const flipBtn = document.createElement('button');
+  flipBtn.className = 'flip-btn';
+  flipBtn.type = 'button';
+  flipBtn.textContent = '⇅ 裏返す';
+  flipBtn.addEventListener('click', flip);
+  backEl.addEventListener('click', flip);
+
+  enableHandDrag(frontEl, pairId, pair);
+
+  const slot = document.createElement('div');
+  slot.className = 'card-slot';
+  slot.append(frontEl, backEl);
+  wrapper.append(slot, flipBtn);
+  handArea.appendChild(wrapper);
+}
+
+/* ============================================================
+   ドラッグ&ドロップ(Pointer Events 統一)
+   ============================================================ */
+function enableHandDrag(el, pairId, pair) {
+  el.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+
+    const startX = e.clientX, startY = e.clientY;
+    // タッチ時はゴーストを指の少し上に浮かせ、置く位置が指で隠れないようにする
+    const lift = e.pointerType === 'mouse' ? 0 : 56;
+    let dragging = false, ghost = null, ghostSize = CARD_SIZE;
+
+    const onMove = ev => {
+      if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > 6) {
+        dragging = true;
+        el.classList.add('dragging');
+        ghost = document.createElement('div');
+        ghost.className = 'drag-ghost';
+        ghostSize = CARD_SIZE * canvasScale;
+        ghost.style.width = ghost.style.height = ghostSize + 'px';
+        const side = localHandSides[pairId] || 'front';
+        ghost.appendChild(makeSvg(pair[side]));
+        document.body.appendChild(ghost);
+        deselectCard();
+      }
+      if (dragging) {
+        ghost.style.left = (ev.clientX - ghostSize/2) + 'px';
+        ghost.style.top  = (ev.clientY - lift - ghostSize/2) + 'px';
+        canvasArea.classList.toggle('drop-ok', canvasPoint(ev.clientX, ev.clientY - lift).inside);
+      }
+    };
+    const finish = ev => {
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerup', finish);
+      el.removeEventListener('pointercancel', cancel);
+      el.classList.remove('dragging');
+      canvasArea.classList.remove('drop-ok');
+      if (ghost) ghost.remove();
+      const side = localHandSides[pairId] || 'front';
+      if (!dragging) {
+        // タップ: カンヴァス中央付近に少しずらして置く
+        if (ev.cancelled) return;
+        const jitter = () => (Math.random() - .5) * 80;
+        placeOnCanvas(pairId, side, (CANVAS_W - CARD_SIZE)/2 + jitter(), (CANVAS_H - CARD_SIZE)/2 + jitter(), 0);
+        removeFromHand(pairId);
+        return;
+      }
+      const pt = canvasPoint(ev.clientX, ev.clientY - lift);
+      if (!ev.cancelled && pt.inside) {
+        placeOnCanvas(pairId, side, pt.x - CARD_SIZE/2, pt.y - CARD_SIZE/2, 0);
+        removeFromHand(pairId);
+      }
+    };
+    const cancel = () => finish({ cancelled: true });
+
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerup', finish);
+    el.addEventListener('pointercancel', cancel);
+  });
+}
+
+function placeOnCanvas(pairId, side, x, y, rotation) {
+  const me = gameState.players.find(p => p.id === myId);
+  if (!me || !me.hand) return;
+  const pair = me.hand.find(p => p.pairId == pairId);
+  if (!pair) return;
+  if (canvasArea.querySelector(`.canvas-card[data-pair-id="${pairId}"]`)) return; // 二重配置防止
+
+  const el = document.createElement('div');
+  el.className = 'canvas-card';
+  el.dataset.pairId = pairId;
+  el.dataset.side   = side;
+  el.dataset.rot    = rotation;
+
+  const cx = Math.max(0, Math.min(x, canvasArea.offsetWidth  - CARD_SIZE));
+  const cy = Math.max(0, Math.min(y, canvasArea.offsetHeight - CARD_SIZE));
+  el.style.left = cx + 'px';
+  el.style.top  = cy + 'px';
+  el.style.transform = `rotate(${rotation}deg)`;
+  el.appendChild(makeSvg(pair[side]));
+  el.classList.add('pop');
+  el.addEventListener('animationend', () => el.classList.remove('pop'), { once: true });
+
+  enableCanvasCardInteraction(el, pair);
+  canvasArea.appendChild(el);
+  buzz(12);
+}
+
+function enableCanvasCardInteraction(el, pair) {
+  el.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    el.setPointerCapture(e.pointerId);
+
+    const startX = e.clientX, startY = e.clientY;
+    const startLeft = parseFloat(el.style.left) || 0;
+    const startTop  = parseFloat(el.style.top)  || 0;
+    let moved = false;
+
+    const onMove = ev => {
+      const dx = (ev.clientX - startX) / canvasScale, dy = (ev.clientY - startY) / canvasScale;
+      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) > 6) { moved = true; canvasArea.appendChild(el); }
+      if (!moved) return;
+      const nl = Math.max(0, Math.min(startLeft + dx, canvasArea.offsetWidth  - CARD_SIZE));
+      const nt = Math.max(0, Math.min(startTop  + dy, canvasArea.offsetHeight - CARD_SIZE));
+      el.style.left = nl + 'px';
+      el.style.top  = nt + 'px';
+      if (selectedCardEl === el) moveControls(el);
+    };
+    const finish = () => {
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerup', finish);
+      el.removeEventListener('pointercancel', finish);
+      if (!moved) selectCanvasCard(el, pair);
+    };
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerup', finish);
+    el.addEventListener('pointercancel', finish);
+  });
+}
+
+function selectCanvasCard(el, pair) {
+  if (selectedCardEl === el) { deselectCard(); return; }
+  deselectCard();
+  el.classList.add('selected');
+  selectedCardEl = el;
+
+  controlsEl = document.createElement('div');
+  controlsEl.className = 'card-controls';
+
+  const mkBtn = (icon, title, fn) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = icon; b.title = title;
+    b.addEventListener('pointerdown', ev => ev.stopPropagation());
+    b.addEventListener('click', ev => { ev.stopPropagation(); fn(); });
+    return b;
+  };
+
+  controlsEl.append(
+    mkBtn('↺', '反時計回りに45°', () => rotateCard(el, -45)),
+    mkBtn('↻', '時計回りに45°',   () => rotateCard(el, +45)),
+    mkBtn('⇆', '表裏を反転',      () => flipOnCanvas(el, pair)),
+    mkBtn('✕', '手札に戻す',      () => returnToHand(el.dataset.pairId)),
+  );
+  canvasStage.appendChild(controlsEl);
+  moveControls(el);
+  buzz(8);
+}
+
+// 操作パレットはカードの上に出す。上に余白がなければ下に出す(ステージ座標 = 論理座標 × 倍率)
+function moveControls(el) {
+  if (!controlsEl) return;
+  const s = canvasScale;
+  const cx  = ((parseFloat(el.style.left) || 0) + CARD_SIZE/2) * s;
+  const top = (parseFloat(el.style.top) || 0) * s;
+  const w = controlsEl.offsetWidth, h = controlsEl.offsetHeight;
+  const sw = canvasStage.clientWidth, sh = canvasStage.clientHeight;
+  controlsEl.style.left = Math.max(4, Math.min(cx - w/2, sw - w - 4)) + 'px';
+  controlsEl.style.top  = (top - h - 10 >= 4 ? top - h - 10 : Math.min(top + CARD_SIZE*s + 10, sh - h - 4)) + 'px';
+}
+
+function deselectCard() {
+  if (selectedCardEl) { selectedCardEl.classList.remove('selected'); selectedCardEl = null; }
+  if (controlsEl) { controlsEl.remove(); controlsEl = null; }
+}
+canvasArea.addEventListener('pointerdown', e => { if (e.target === canvasArea) deselectCard(); });
+
+function rotateCard(el, delta) {
+  const r = (parseFloat(el.dataset.rot) || 0) + delta;
+  el.dataset.rot = r;
+  el.style.transform = `rotate(${r}deg)`;
+}
+
+function flipOnCanvas(el, pair) {
+  const next = el.dataset.side === 'front' ? 'back' : 'front';
+  el.dataset.side = next;
+  const svg = el.querySelector('svg');
+  if (svg) svg.remove();
+  el.appendChild(makeSvg(pair[next]));
+}
+
+function removeFromHand(pairId) {
+  const w = handArea.querySelector(`.card-pair[data-pair-id="${pairId}"]`);
+  if (w) w.remove();
+}
+
+function returnToHand(pairId) {
+  const onCanvas = canvasArea.querySelector(`.canvas-card[data-pair-id="${pairId}"]`);
+  if (onCanvas) onCanvas.remove();
+  deselectCard();
+  const me = gameState.players.find(p => p.id === myId);
+  const pair = me && me.hand ? me.hand.find(p => p.pairId == pairId) : null;
+  if (pair) addPairToHand(pair);
+}
+
+/* ============================================================
+   フェーズ描画
+   ============================================================ */
+function renderLocalState() {
+  const me = gameState.players.find(p => p.id === myId);
+  if (!me) return;
+  if (isHost) localDeadline = gameState.deadline || null;
+  tickTimer();
+  const prevRenderedPhase = lastRenderedPhase;
+  lastRenderedPhase = gameState.phase;
+
+  if (gameState.phase === 'lobby') {
+    enterWaitingRoom();
+    return;
+  }
+
+  if (gameState.phase === 'game') {
+    showPanel('panel-game');
+    $('round-no').textContent = gameState.round;
+    const readyN = gameState.players.filter(p => p.isReady && !p.disconnected).length;
+    const total  = activeCount();
+
+    if (!me.isReady) {
+      $('my-theme').textContent = `【 ${me.theme} 】`;
+      const deckLeft = isHost ? gameState.deck.length : gameState.deckLeft;
+      $('btn-mulligan').disabled = !!me.mulliganUsed || deckLeft < 4;
+      if (!mulliganArmTimer) $('btn-mulligan').textContent = me.mulliganUsed ? '引き直し済み' : deckLeft < 4 ? '山札切れ' : '手札を引き直す(1回)';
+      $('btn-submit').disabled = false;
+      if (localRenderedRound !== gameState.round) {
+        localRenderedRound = gameState.round;
+        localHandSides = {};
+        renderHand(me.hand);
+      } else if (handArea.children.length === 0 && canvasArea.children.length === 0) {
+        renderHand(me.hand);
+      }
+      setStatus(`制作中… 完成 ${readyN}/${total} 人`);
+    } else {
+      $('my-theme').textContent = '完成!他の出展を待っています';
+      $('btn-mulligan').disabled = true;
+      $('btn-submit').disabled = true;
+      deselectCard();
+      handArea.innerHTML = '';
+      canvasArea.innerHTML = `<div class="waiting-msg"><span class="big">✓</span>出展完了 — ${readyN}/${total} 人</div>`;
+      setStatus(`完成を待っています… ${readyN}/${total} 人`);
+    }
+    return;
+  }
+
+  if (gameState.phase === 'gallery') {
+    showPanel('panel-gallery');
+    setStatus('品評会 — 贋作師に投票してください');
+    renderGallery();
+    return;
+  }
+
+  if (gameState.phase === 'guess') {
+    if (prevRenderedPhase !== 'guess') { $('input-guess').value = ''; $('btn-guess-confirm').disabled = false; }
+    showPanel('panel-guess');
+    setStatus('逆転のチャンス — 贋作師がお題を推理中');
+    renderGuess();
+    return;
+  }
+
+  if (gameState.phase === 'judge') {
+    showPanel('panel-judge');
+    setStatus('判定 — 贋作師の答えは正解?');
+    renderJudge();
+    return;
+  }
+
+  if (gameState.phase === 'result') {
+    showPanel('panel-result');
+    setStatus(`ラウンド ${gameState.round} 終了`);
+    renderResult();
+  }
+}
+
+/* ============================================================
+   ギャラリー
+   ============================================================ */
+// 作品(額縁つき)を描く。論理サイズで並べてから表示幅に合わせて拡縮する
+function buildArtwork(p) {
+  const frame = document.createElement('div');
+  frame.className = 'frame';
+  const cv = document.createElement('div');
+  cv.className = 'gallery-canvas';
+
+  const srcW = p.canvasW || CANVAS_W, srcH = p.canvasH || CANVAS_H;
+  const inner = document.createElement('div');
+  inner.style.cssText = `position:absolute;width:${srcW}px;height:${srcH}px;transform-origin:top left;`;
+  (p.canvas || []).forEach(cd => {
+    const pair = (p.hand || []).find(h => h.pairId == cd.pairId);
+    if (!pair || !pair[cd.side]) return;
+    const icon = makeSvg(pair[cd.side]);
+    const lx = (cd.leftPct != null) ? cd.leftPct * srcW : 0;
+    const ty = (cd.topPct  != null) ? cd.topPct  * srcH : 0;
+    icon.style.cssText = `position:absolute;left:${lx}px;top:${ty}px;width:${CARD_SIZE}px;height:${CARD_SIZE}px;transform:rotate(${cd.rotation||0}deg);transform-origin:center center;`;
+    inner.appendChild(icon);
+  });
+  cv.appendChild(inner);
+  new ResizeObserver(() => {
+    if (!cv.offsetWidth) return;
+    inner.style.transform = `scale(${Math.min(cv.offsetWidth / srcW, cv.offsetHeight / srcH)})`;
+  }).observe(cv);
+  frame.appendChild(cv);
+  return frame;
+}
+
+function renderGallery() {
+  const g = $('gallery-container');
+  g.innerHTML = '';
+  const votedN = gameState.players.filter(p => p.hasVoted && !p.disconnected).length;
+  const total  = activeCount();
+  const me = gameState.players.find(p => p.id === myId);
+  const iVoted = me && me.hasVoted;
+  if (iVoted) pendingVote = null;
+  const animate = galleryAnimRound !== gameState.round;   // 同期のたびに入場アニメが再生されないように
+  galleryAnimRound = gameState.round;
+
+  gameState.players.forEach((p, i) => {
+    const canPick = !iVoted && p.id !== myId && !p.disconnected;
+    const pick = () => { if (!canPick) return; pendingVote = p.index; buzz(8); renderGallery(); };
+
+    const item = document.createElement('div');
+    item.className = 'gallery-item'
+      + (myVoteTarget === p.index ? ' voted-target' : '')
+      + (pendingVote === p.index ? ' pending' : '')
+      + (canPick ? ' can-pick' : '')
+      + (animate ? '' : ' no-anim');
+    item.style.animationDelay = (i * 0.08) + 's';
+
+    const frame = buildArtwork(p);
+    frame.addEventListener('click', pick);
+    item.appendChild(frame);
+
+    const plaque = document.createElement('div');
+    plaque.className = 'museum-plaque';
+    plaque.innerHTML =
+      `<span class="work-no">No.${String(p.index + 1).padStart(2, '0')}</span>` +
+      `<span class="artist">${esc(p.name)}</span>` +
+      `${p.id === myId ? '<span class="you">(あなた)</span>' : ''}` +
+      `${p.hasVoted ? '<span class="you" style="color:#5d7a4e;">投票済</span>' : ''}`;
+    item.appendChild(plaque);
+
+    if (p.id !== myId && !p.disconnected) {
+      const btn = document.createElement('button');
+      const chosen = pendingVote === p.index;
+      btn.className = 'btn btn-sm btn-vote ' + (chosen ? 'btn-gold' : 'btn-rope');
+      btn.textContent = chosen ? '✓ 選択中' : 'この人が贋作師?';
+      btn.disabled = iVoted;
+      btn.addEventListener('click', pick);
+      item.appendChild(btn);
+    }
+    g.appendChild(item);
+  });
+
+  const target = gameState.players.find(p => p.index === pendingVote);
+  $('vote-dock').hidden = iVoted || !target;
+  if (target) $('vote-dock-name').textContent = target.name;
+
+  $('vote-progress').textContent = iVoted
+    ? `投票しました — 開票まで ${votedN}/${total} 人`
+    : `作品をタップして選び、下のボタンで確定 — 投票状況 ${votedN}/${total} 人`;
+}
+
+function sendVote(targetIndex) {
+  myVoteTarget = targetIndex;
+  pendingVote = null;
+  buzz(20);
+  if (isHost) {
+    const me = gameState.players.find(p => p.id === myId);
+    me.vote = targetIndex; me.hasVoted = true;
+    checkAllVoted();
+  } else {
+    hostConn.send({ type:'vote', voteTarget: targetIndex });
+    const me = gameState.players.find(p => p.id === myId);
+    if (me) me.hasVoted = true;     // 楽観的更新
+    renderGallery();
+  }
+}
+
+/* ============================================================
+   結果
+   ============================================================ */
+function renderResult() {
+  const info = gameState.resultInfo;
+  if (!info) return;
+  const players = gameState.players;
+
+  // 演出はラウンドごとに一度だけ。以降の再描画では最終状態をそのまま出す
+  const animate = resultAnimRound !== gameState.round;
+  resultAnimRound = gameState.round;
+  resultTimers.forEach(clearTimeout); resultTimers = [];
+  const at = (ms, fn) => { if (animate) resultTimers.push(setTimeout(fn, ms)); else fn(); };
+  const seq = ['result-votes', 'reveal-art', 'result-scores', 'result-actions'];
+  seq.forEach(id => $(id).classList.toggle('seq-hidden', animate));
+
+  // 勝敗バナー(最初はドラムロール)
+  const fakerWins = !info.caught || info.reversed;
+  const verdict = info.reversed ? '大逆転 — 贋作師がお題を言い当てた'
+                : info.caught   ? '正統派の勝利 — 贋作は見破られた'
+                :                 '贋作師の勝利 — まんまと逃げ切った';
+  let guessLine = '';
+  if (info.caught) {
+    const j = info.judge;
+    const how = !j ? '' : j.auto ? '(お題と一致)' : `(判定 ${j.accept} 対 ${j.reject})`;
+    guessLine = info.guess
+      ? `<div class="guess-line">贋作師の答え「<b>${esc(info.guess)}</b>」— ${info.reversed ? '<span class="ok">正解!</span>' : '<span class="ng">不正解</span>'} ${how}</div>`
+      : '<div class="guess-line">贋作師は時間内に答えられなかった</div>';
+  }
+  const banner = $('result-banner');
+  banner.className = 'reveal-banner drumroll';
+  banner.innerHTML = '<div class="verdict">審査結果は<span class="dots"><i>・</i><i>・</i><i>・</i></span></div>';
+  const showVerdict = () => {
+    banner.className = 'reveal-banner ' + (fakerWins ? 'win-faker' : 'win-master') + (animate ? ' slam' : '');
+    banner.innerHTML =
+      `<div class="verdict">${verdict}</div>` +
+      `<div class="sub">贋作師は <b style="color:var(--text);">${esc(info.fakerName)}</b> でした</div>` +
+      `<div class="themes">正統派のお題「<b>${esc(info.masterTheme)}</b>」 ／ 贋作師のお題「<b>${esc(info.fakerTheme)}</b>」</div>` +
+      guessLine;
+  };
+
+  // 贋作師の作品に「贋作」の判を押す
+  const faker = players[info.fakerIndex];
+  const art = $('reveal-art');
+  art.innerHTML = '';
+  art.classList.toggle('no-anim', !animate);
+  if (faker) {
+    const frame = buildArtwork(faker);
+    const stamp = document.createElement('div');
+    stamp.className = 'stamp';
+    stamp.textContent = '贋作';
+    frame.appendChild(stamp);
+    const plaque = document.createElement('div');
+    plaque.className = 'museum-plaque';
+    plaque.innerHTML = `<span class="work-no">お題「${esc(info.fakerTheme)}」</span><span class="artist">${esc(faker.name)}</span>`;
+    art.append(frame, plaque);
+  }
+
+  // 得票バー
+  const maxV = Math.max(...info.votes, 1);
+  const vt = $('vote-table');
+  vt.innerHTML = '';
+  const bars = [];
+  players.forEach(p => {
+    if (info.votes[p.index] === undefined) return;   // 結果発表中に入場した人
+    const isFaker = info.roles[p.index];
+    const row = document.createElement('div');
+    row.className = 'vote-row';
+    row.innerHTML =
+      `<span class="name"><span class="role">${isFaker ? '🎭' : '🖼'}</span> ${esc(p.name)}</span>` +
+      `<span class="vote-bar-wrap"><span class="vote-bar"></span></span>` +
+      `<span class="count">${info.votes[p.index]} 票</span>`;
+    vt.appendChild(row);
+    bars.push([row.querySelector('.vote-bar'), info.votes[p.index] / maxV * 100]);
+  });
+  const fillBars = () => requestAnimationFrame(() => requestAnimationFrame(() => {
+    bars.forEach(([el, w]) => el.style.width = w + '%');
+  }));
+
+  // 通算スコア
+  const sb = $('score-board');
+  sb.innerHTML = '';
+  [...players].sort((a, b) => (b.score||0) - (a.score||0)).forEach((p, i) => {
+    const d = info.deltas[p.index] || 0;
+    const row = document.createElement('div');
+    row.className = 'score-row';
+    row.innerHTML =
+      `<span class="rank">${i + 1}</span>` +
+      `<span>${esc(p.name)}${p.id === myId ? ' <span style="color:var(--text-dim);font-size:.8em;">(あなた)</span>' : ''}</span>` +
+      `<span class="delta">${d > 0 ? '+' + d : ''}</span>` +
+      `<span class="pts">${p.score || 0} pt</span>`;
+    sb.appendChild(row);
+  });
+
+  $('btn-next-round').style.display = isHost ? 'block' : 'none';
+  $('result-wait-msg').style.display = isHost ? 'none' : 'block';
+
+  // 演出: 開票 → 判定と贋作の判 → スコア
+  at(300,  () => { $('result-votes').classList.remove('seq-hidden'); fillBars(); });
+  at(2000, () => { showVerdict(); $('reveal-art').classList.remove('seq-hidden'); buzz([30, 60, 30]); });
+  at(3000, () => { $('result-scores').classList.remove('seq-hidden'); $('result-actions').classList.remove('seq-hidden'); });
+}
+
+/* ============================================================
+   逆転チャンス
+   ============================================================ */
+function renderGuess() {
+  const info = gameState.guessInfo;
+  if (!info) return;
+  const me = gameState.players.find(p => p.id === myId);
+  const iAmFaker = me && me.index === info.fakerIndex;
+  $('guess-lead').innerHTML = iAmFaker
+    ? `見破られました…あなたのお題「<b>${esc(me.theme)}</b>」は、1人だけ違う贋作師のお題でした。<br>みんなの作品から本当のお題を当てれば<b class="gold">大逆転</b>です!`
+    : `贋作師は <b class="rope">${esc(info.fakerName)}</b> でした!<br>でも、みんなのお題を当てられたら逆転負け…`;
+
+  // 推理の手がかりになる、贋作師以外の作品を並べる
+  const art = $('guess-art');
+  art.innerHTML = '';
+  gameState.players.forEach(p => {
+    if (p.index === info.fakerIndex || p.disconnected) return;
+    const item = document.createElement('div');
+    const plaque = document.createElement('div');
+    plaque.className = 'museum-plaque';
+    plaque.innerHTML = `<span class="artist">${esc(p.name)}</span>`;
+    item.append(buildArtwork(p), plaque);
+    art.appendChild(item);
+  });
+
+  // 入力欄は作り直さない(同期のたびに書きかけの答えが消えないように)
+  $('guess-form').hidden = !iAmFaker;
+  $('guess-wait').textContent = iAmFaker ? '' : `${info.fakerName} が答えを考えています…`;
+}
+
+function sendGuess() {
+  const answer = $('input-guess').value.trim();
+  if (!answer) { toast('答えを入力してください', true); return; }
+  buzz(20);
+  $('btn-guess-confirm').disabled = true;
+  $('input-guess').blur();
+  if (isHost) submitGuess(answer);
+  else hostConn.send({ type:'guess', answer });
+}
+
+/* ============================================================
+   判定
+   ============================================================ */
+function renderJudge() {
+  const info = gameState.guessInfo;
+  if (!info) return;
+  const me = gameState.players.find(p => p.id === myId);
+  const iAmFaker = me && me.index === info.fakerIndex;
+  const judged = (info.judgedIds || []).includes(myId);
+  const total = gameState.players.filter(p => !p.disconnected && p.index !== info.fakerIndex).length;
+
+  $('judge-answer').textContent = info.answer;
+  $('judge-master').textContent = info.master;
+  $('judge-buttons').hidden = iAmFaker || judged;
+  $('judge-progress').textContent = iAmFaker
+    ? `みんなが判定しています… ${(info.judgedIds || []).length}/${total} 人`
+    : judged ? `判定しました — ${(info.judgedIds || []).length}/${total} 人`
+             : '同じものを指していれば「正解」に。言い方や表記の違いは大目に見ましょう。';
+}
+
+function sendJudge(ok) {
+  buzz(15);
+  if (isHost) {
+    const me = gameState.players.find(p => p.id === myId);
+    recordJudge(me, ok);
+  } else {
+    hostConn.send({ type:'judge', ok });
+    gameState.guessInfo.judgedIds = [...(gameState.guessInfo.judgedIds || []), myId];   // 楽観的更新
+    renderJudge();
+  }
+}
+
+/* ============================================================
+   制限時間の表示
+   ============================================================ */
+function tickTimer() {
+  const chip = $('timer-chip');
+  const timed = localDeadline && ['game', 'gallery', 'guess', 'judge'].includes(gameState.phase);
+  chip.hidden = !timed;
+  if (!timed) return;
+  const left = Math.max(0, localDeadline - Date.now());
+  const sec  = Math.ceil(left / 1000);
+  chip.textContent = `⏳ ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+  chip.classList.toggle('hurry', sec <= 10);
+
+  // 制作の時間切れ: 今カンヴァスにある作品で自動出展
+  if (left === 0 && gameState.phase === 'game' && autoSubmitRound !== gameState.round) {
+    const me = gameState.players.find(p => p.id === myId);
+    if (me && !me.isReady) {
+      autoSubmitRound = gameState.round;
+      toast('時間切れ!今の作品で出展しました');
+      submitCanvas();
+    }
+  }
+}
+setInterval(tickTimer, 250);
+
+/* ============================================================
+   ボタン・初期化
+   ============================================================ */
+$('btn-create').addEventListener('click', initHost);
+$('btn-join').addEventListener('click', initGuest);
+$('input-room-code').addEventListener('keydown', e => { if (e.key === 'Enter') initGuest(); });
+
+$('btn-copy-code').addEventListener('click', () => copyText(roomCode, 'コードをコピーしました'));
+$('btn-copy-link').addEventListener('click', () => copyText(inviteUrl(), '招待リンクをコピーしました'));
+$('room-chip').addEventListener('click', () => copyText(inviteUrl(), '招待リンクをコピーしました'));
+
+$('btn-start').addEventListener('click', () => { if (isHost && activeCount() >= MIN_PLAYERS) startRound(); });
+
+// 引き直しは置いたカードも消えるため、誤タップ防止に2回タップで確定
+let mulliganArmTimer = null;
+function disarmMulligan() {
+  clearTimeout(mulliganArmTimer); mulliganArmTimer = null;
+  $('btn-mulligan').classList.remove('armed');
+  $('btn-mulligan').textContent = '手札を引き直す(1回)';
+}
+$('btn-mulligan').addEventListener('click', () => {
+  if (!mulliganArmTimer) {
+    $('btn-mulligan').classList.add('armed');
+    $('btn-mulligan').textContent = 'もう一度タップで引き直す';
+    mulliganArmTimer = setTimeout(disarmMulligan, 3000);
+    return;
+  }
+  disarmMulligan();
+  deselectCard();
+  if (isHost) {
+    const me = gameState.players[0];
+    if (me.mulliganUsed || gameState.deck.length < 4) return;
+    me.mulliganUsed = true;
+    me.hand = gameState.deck.splice(0, 4);
+    localHandSides = {};
+    renderHand(me.hand);
+    syncAll();
+  } else {
+    hostConn.send({ type:'mulligan' });
+    localHandSides = {};
+    handArea.innerHTML = ''; canvasArea.innerHTML = '';
+  }
+  toast('手札を引き直しました');
+});
+
+$('btn-submit').addEventListener('click', () => {
+  if (canvasArea.querySelectorAll('.canvas-card').length === 0 && !confirm('カンヴァスが空白です。このまま出展しますか?')) return;
+  submitCanvas();
+});
+
+function submitCanvas() {
+  deselectCard();
+  const cards = canvasArea.querySelectorAll('.canvas-card');
+
+  disarmMulligan();
+  const cw = CANVAS_W, ch = CANVAS_H;
+  const canvasData = Array.from(cards).map(el => ({
+    pairId:   el.dataset.pairId,
+    side:     el.dataset.side,
+    leftPct:  (parseFloat(el.style.left) || 0) / cw,
+    topPct:   (parseFloat(el.style.top)  || 0) / ch,
+    rotation: el.dataset.rot || '0',
+  }));
+
+  if (isHost) {
+    const me = gameState.players[0];
+    me.canvas = canvasData; me.canvasW = cw; me.canvasH = ch; me.isReady = true;
+    checkAllReady();
+  } else {
+    hostConn.send({ type:'submit_canvas', canvasData, canvasW: cw, canvasH: ch });
+    const me = gameState.players.find(p => p.id === myId);
+    if (me) me.isReady = true;      // 楽観的更新
+    renderLocalState();
+  }
+}
+
+$('btn-next-round').addEventListener('click', () => {
+  if (!isHost) return;
+  if (activeCount() < MIN_PLAYERS) { backToLobby(`${MIN_PLAYERS}人以上集まるまで待機室で待ちましょう`); return; }
+  gameState.round++;
+  localHandSides = {}; localRenderedRound = 0; myVoteTarget = null; pendingVote = null;
+  startRound();
+});
+$('btn-guess-confirm').addEventListener('click', sendGuess);
+$('input-guess').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) sendGuess(); });
+$('btn-judge-ok').addEventListener('click', () => sendJudge(true));
+$('btn-judge-ng').addEventListener('click', () => sendJudge(false));
+document.querySelectorAll('[data-open-rules]').forEach(b => b.addEventListener('click', () => { $('rules-modal').hidden = false; }));
+$('rules-modal').addEventListener('click', e => { if (e.target === $('rules-modal') || e.target.closest('[data-close-rules]')) $('rules-modal').hidden = true; });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $('rules-modal').hidden = true; });
+
+$('btn-vote-confirm').addEventListener('click', () => { if (pendingVote !== null) sendVote(pendingVote); });
+$('btn-vote-cancel').addEventListener('click', () => { pendingVote = null; renderGallery(); });
+
+// 招待リンク (?room=XXXX) からの入場
+(function initFromUrl() {
+  const code = new URLSearchParams(location.search).get('room');
+  if (code && /^[a-zA-Z0-9]{4}$/.test(code)) {
+    $('input-room-code').value = code.toUpperCase();
+    setStatus(`招待コード ${code.toUpperCase()} の展覧会に入場できます。名前を入れて「入場する」を押してください。`);
+    $('input-name').focus();
+  }
+})();
+
+// 誤離脱防止
+window.addEventListener('beforeunload', e => {
+  if (gameState.phase !== 'lobby' || (isHost && gameState.players.length > 1)) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+</script>
+</body>
+</html>
