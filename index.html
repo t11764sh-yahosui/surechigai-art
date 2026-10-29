@@ -109,7 +109,10 @@ h1 {
 
 /* ---------- パネル ---------- */
 .panel { display: none; }
-.panel.active { display: block; animation: rise .35s ease both; }
+/* パネルは不透明度だけでフェードイン。transform を動かすと、中の position:fixed(手札トレイ・投票バー)が
+   画面ではなくパネル基準になり、カンヴァスの上に重なってしまう */
+.panel.active { display: block; animation: panel-in .3s ease both; }
+@keyframes panel-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
   .panel.active { animation: none; }

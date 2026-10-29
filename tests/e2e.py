@@ -2,6 +2,7 @@
 
     .venv/bin/python tests/e2e.py            # 画面なしで実行
     .venv/bin/python tests/e2e.py --headed   # 4人分のウィンドウを開いて動きを見る
+    .venv/bin/python tests/e2e.py --watch    # 窓を横に並べ、ゆっくり進めて観戦する
 
 4人のプレイヤーを別々のブラウザコンテキストで動かし、本物の P2P 通信で1ラウンド遊ぶ。
 各フェーズのスクリーンショットは test-results/ に保存される。
@@ -10,6 +11,7 @@ import argparse
 import os
 import sys
 import threading
+import time
 
 from playwright.sync_api import sync_playwright
 
@@ -37,18 +39,32 @@ def shoot(players, label):
         p.page.screenshot(path=os.path.join(OUT, f'{label}-{i}-{p.name}.png'), full_page=True)
 
 
-def run(headed):
+def pause(watch, sec=2.5):
+    if watch:
+        time.sleep(sec)   # 観戦モード: 画面の変化を目で追えるように間を置く
+
+
+def run(headed, watch=False):
     os.makedirs(OUT, exist_ok=True)
     srv = make_server(0)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = f'http://127.0.0.1:{srv.server_address[1]}/'
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(channel='chrome', headless=not headed, slow_mo=150 if headed else 0)
-        players = []
-        for name in NAMES:
-            ctx = browser.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True)
-            players.append(Player(ctx.new_page(), name))
+        browsers, players = [], []
+        if watch:
+            # ウィンドウの位置はブラウザ単位でしか指定できないので、1人1ブラウザで横に並べる
+            for i, name in enumerate(NAMES):
+                br = pw.chromium.launch(channel='chrome', headless=False, slow_mo=350, args=[
+                    f'--window-position={i * 505},0', '--window-size=500,900'])  # Chrome の窓は幅500px未満にならない
+                browsers.append(br)
+                players.append(Player(br.new_context(no_viewport=True).new_page(), name))
+        else:
+            br = pw.chromium.launch(channel='chrome', headless=not headed, slow_mo=150 if headed else 0)
+            browsers.append(br)
+            for name in NAMES:
+                ctx = br.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True)
+                players.append(Player(ctx.new_page(), name))
         host, guests = players[0], players[1:]
 
         try:
@@ -62,9 +78,15 @@ def run(headed):
             host.page.wait_for_function('gameState.players.length === 4')
             check(True, '待機室に4人そろった')
             shoot(players, '1-lobby')
+            pause(watch)
 
             step('開幕して、全員が描いて出展')
             host.start()
+            host.wait_panel('panel-game')
+            host.page.wait_for_timeout(500)
+            gap = host.page.evaluate(
+                "innerHeight - document.querySelector('#game-dock').getBoundingClientRect().bottom")
+            check(abs(gap) < 1, '手札トレイが画面の一番下に固定されている(カンヴァスに重ならない)')
             for p in players:
                 placed = p.draw(n_cards=3)
                 check(placed == 3, f'{p.name} がカード3枚を置いて出展')
@@ -72,6 +94,7 @@ def run(headed):
                 p.wait_panel('panel-gallery')
             check(True, '全員の画面が品評会に進んだ')
             shoot(players, '2-gallery')
+            pause(watch, 4)
 
             # 逆転チャンスまで確実に進めるため、ホストだけが知る正解(贋作師)に全員で投票する
             faker_i = host.page.evaluate('gameState.players.find(p => p.isFaker).index')
@@ -86,6 +109,7 @@ def run(headed):
             check(faker.is_faker_in_guess(), '贋作師にだけ回答欄が出ている')
             check(not any(p.is_faker_in_guess() for p in players if p is not faker), 'ほかの人には回答欄が出ていない')
             shoot(players, '3-guess')
+            pause(watch, 4)
 
             step('贋作師が自由入力で回答 → 残りの全員が判定')
             faker.guess('それっぽい何か')
@@ -94,6 +118,7 @@ def run(headed):
                 p.wait_panel('panel-judge')
             check(faker.page.locator('#judge-buttons').is_hidden(), '贋作師本人には判定ボタンが出ない')
             shoot(players, '4-judge')
+            pause(watch, 3)
             others[0].judge(True)
             others[1].judge(True)
             others[2].judge(False)
@@ -105,6 +130,7 @@ def run(headed):
             check(scores[faker_i] == 2 and sum(scores) == 2, f'贋作師だけに+2点(得点 {scores})')
             check(host.page.locator('.vote-row').count() == 4, '得票表に4人分の行がある')
             shoot(players, '5-result')
+            pause(watch, 15)   # 結果発表をゆっくり見られるように
 
             errors = [e for p in players for e in p.errors]
             check(not errors, 'ブラウザのエラーなし' if not errors else '\n'.join(errors))
@@ -119,11 +145,14 @@ def run(headed):
             print(f'失敗時の画面: {OUT}/FAIL-*.png', flush=True)
             return 1
         finally:
-            browser.close()
+            for br in browsers:
+                br.close()
             srv.shutdown()
 
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--headed', action='store_true', help='ブラウザ画面を表示して動きを見る')
-    sys.exit(run(ap.parse_args().headed))
+    ap.add_argument('--watch', action='store_true', help='4人の窓を横に並べ、ゆっくり進めて観戦する')
+    a = ap.parse_args()
+    sys.exit(run(a.headed or a.watch, a.watch))

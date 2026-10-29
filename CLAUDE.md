@@ -16,7 +16,7 @@ PeerJS の公開サーバーを使うのでネット接続が必要。
 ## 開発用コマンド
 
 - `python3 dev/serve.py` — http://localhost:8000/ で配信。ファイル保存でブラウザが自動再読み込み(index.html 自体は変更しない)
-- `.venv/bin/python tests/e2e.py --headed` — 通しテストの動きをウィンドウで見る
+- `.venv/bin/python tests/e2e.py --headed` — 通しテストの動きをウィンドウで見る(`--watch` なら窓を横に並べてゆっくり観戦)
 - `.venv/bin/python tests/bots.py <招待コード>` — ボット3体を部屋に入れて一緒に遊ばせる(`-n` で人数)
 - `tests/players.py` — 画面を操作する部品。テストとボットで共用。UI のセレクタを変えたらここも直す
 
